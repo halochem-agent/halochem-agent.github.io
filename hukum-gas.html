@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hukum Gas Ideal · HaloChem</title>
+<meta name="description" content="Simulasi hukum gas ideal PV=nRT: ubah suhu, volume, dan jumlah partikel, ukur tekanan dari tumbukan ke dinding.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎈</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Hukum Gas Ideal — PV = nRT</h1>
+  <p class="sim-sub">Tekanan diukur dari tumbukan partikel ke dinding. Amati bagaimana P, V, n, dan T saling terkait.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Partikel gas dalam wadah berpiston"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Tekanan (P)</div><div class="v" id="rP">–</div></div>
+        <div class="item"><div class="k">PV / nT</div><div class="v" id="rConst" style="color:#fbbf24">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="temp">Suhu (T) <span id="tempLbl">300 K</span></label>
+        <input type="range" id="temp" min="100" max="800" step="10" value="300">
+      </div>
+      <div class="control">
+        <label for="vol">Volume (V) <span id="volLbl">100%</span></label>
+        <input type="range" id="vol" min="35" max="100" step="1" value="100">
+      </div>
+      <div class="control">
+        <label for="num">Jumlah partikel (n) <span id="numLbl">80</span></label>
+        <input type="range" id="num" min="20" max="160" step="5" value="80">
+      </div>
+
+      <h2>Inti idenya</h2>
+      <ul>
+        <li>Dinding kanan adalah <b>piston</b> — menggeser slider Volume mengubah ukuran wadah.</li>
+        <li>Tekanan = seberapa sering &amp; sekeras partikel menghantam dinding.</li>
+        <li>Nilai <b style="color:#fbbf24">PV/nT</b> tetap ≈ konstan — itulah inti PV = nRT.</li>
+      </ul>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li><b>Boyle:</b> tahan T &amp; n, kecilkan V → P naik (V↓, P↑).</li>
+        <li><b>Gay-Lussac:</b> tahan V &amp; n, naikkan T → P naik.</li>
+        <li><b>Avogadro:</b> tahan T &amp; V, tambah n → P naik.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const R = 6;
+let W = 660, H = 440;
+const padX = 20, padY = 20;
+
+let temp = 300, volPct = 100, num = 80;
+let parts = [];
+let impulse = 0;          // akumulasi momentum ke dinding
+let pSmooth = 0;
+
+function speed() { return 70 * Math.sqrt(temp / 300); }
+function boxRight() { return padX + (W - 2*padX) * (volPct / 100); }
+
+function makeParticle() {
+  const ang = Math.random() * Math.PI * 2;
+  const s = speed() * (0.7 + Math.random()*0.6);
+  return {
+    x: padX + R + Math.random() * (boxRight() - padX - 2*R),
+    y: padY + R + Math.random() * (H - 2*padY - 2*R),
+    vx: Math.cos(ang)*s, vy: Math.sin(ang)*s
+  };
+}
+
+function init() { parts = []; for (let i=0;i<num;i++) parts.push(makeParticle()); }
+
+function rescale() {
+  for (const p of parts) {
+    const m = Math.hypot(p.vx,p.vy)||1;
+    const t = speed()*(0.7+Math.random()*0.6);
+    p.vx=p.vx/m*t; p.vy=p.vy/m*t;
+  }
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  W = w; H = h;
+  return { w, h };
+}
+
+let last = performance.now();
+function step(now) {
+  const dt = Math.min(0.04, (now-last)/1000); last = now;
+  const { w, h } = setupDPR();
+  const right = boxRight();
+  const top = padY, bottom = H - padY, left = padX;
+
+  for (const p of parts) {
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    if (p.x < left+R) { p.x = left+R; p.vx*=-1; impulse += Math.abs(p.vx); }
+    if (p.x > right-R) { p.x = right-R; p.vx*=-1; impulse += Math.abs(p.vx); }
+    if (p.y < top+R) { p.y = top+R; p.vy*=-1; impulse += Math.abs(p.vy); }
+    if (p.y > bottom-R) { p.y = bottom-R; p.vy*=-1; impulse += Math.abs(p.vy); }
+  }
+
+  // tekanan = impuls per satuan waktu per panjang dinding
+  const perim = 2*((right-left)+(bottom-top));
+  const pInst = impulse / (perim * Math.max(dt,0.001)) * 12;
+  pSmooth = pSmooth*0.92 + pInst*0.08;
+  impulse = 0;
+
+  // ---- gambar ----
+  ctx.clearRect(0,0,w,h);
+  // wadah
+  ctx.strokeStyle = '#2e3a48'; ctx.lineWidth = 2;
+  ctx.strokeRect(left, top, right-left, bottom-top);
+  // piston (dinding kanan)
+  ctx.fillStyle = '#3a4654';
+  ctx.fillRect(right, top-4, 10, bottom-top+8);
+  ctx.strokeStyle = '#9fb0c0';
+  for (let y=top; y<bottom; y+=8){ ctx.beginPath(); ctx.moveTo(right,y); ctx.lineTo(right+10,y+6); ctx.stroke(); }
+  // batang piston
+  ctx.fillRect(right+10, (top+bottom)/2 - 3, w - (right+10) - 6, 6);
+
+  // partikel
+  for (const p of parts) {
+    ctx.beginPath(); ctx.arc(p.x,p.y,R,0,7);
+    const sp = Math.hypot(p.vx,p.vy);
+    const hot = Math.min(1, sp/(speed()*1.6));
+    ctx.fillStyle = `rgb(${120+hot*135},${160-hot*90},${250-hot*130})`;
+    ctx.fill();
+  }
+
+  // metrik
+  const V = volPct;                 // satuan relatif
+  const constVal = pSmooth * V / (num * temp);
+  document.getElementById('rP').textContent = pSmooth.toFixed(1);
+  document.getElementById('rConst').textContent = (constVal*1000).toFixed(2);
+
+  requestAnimationFrame(step);
+}
+
+document.getElementById('temp').addEventListener('input', e=>{
+  temp=+e.target.value; document.getElementById('tempLbl').textContent=temp+' K'; rescale();
+});
+document.getElementById('vol').addEventListener('input', e=>{
+  volPct=+e.target.value; document.getElementById('volLbl').textContent=volPct+'%';
+  // jaga partikel tetap di dalam saat piston masuk
+  const right=boxRight();
+  for(const p of parts) if(p.x>right-R) p.x=right-R;
+});
+document.getElementById('num').addEventListener('input', e=>{
+  num=+e.target.value; document.getElementById('numLbl').textContent=num; init();
+});
+
+init();
+requestAnimationFrame(step);
+</script>
+</body>
+</html>

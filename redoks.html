@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reaksi Redoks & Bilangan Oksidasi · HaloChem</title>
+<meta name="description" content="Simulasi reaksi redoks: lihat perubahan bilangan oksidasi, oksidator, reduktor, dan transfer elektron.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔄</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Reaksi Redoks &amp; Bilangan Oksidasi</h1>
+  <p class="sim-sub">Oksidasi = bilangan oksidasi naik (lepas elektron). Reduksi = bilangan oksidasi turun (terima elektron).</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Perubahan bilangan oksidasi"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Oksidator</div><div class="v" id="rOks" style="color:#38bdf8;font-size:1rem">–</div></div>
+        <div class="item"><div class="k">Reduktor</div><div class="v" id="rRed" style="color:#f87171;font-size:1rem">–</div></div>
+        <div class="item"><div class="k">Elektron</div><div class="v" id="rE" style="color:#fbbf24">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="rxn">Reaksi redoks</label>
+        <select id="rxn"></select>
+      </div>
+
+      <h2>Penjelasan</h2>
+      <p id="explain" style="color:#9fb0c0;font-size:0.92rem"></p>
+
+      <h2>Ingat</h2>
+      <ul>
+        <li><b style="color:#f87171">Reduktor</b> = zat yang teroksidasi (mengalami kenaikan biloks).</li>
+        <li><b style="color:#38bdf8">Oksidator</b> = zat yang tereduksi (mengalami penurunan biloks).</li>
+        <li>Jumlah elektron lepas = jumlah elektron terima.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model pembelajaran bilangan oksidasi</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const RXN = {
+  'Zn + Cu²⁺ → Zn²⁺ + Cu':       {ch:[{el:'Zn',f:0,t:2},{el:'Cu',f:2,t:0}], oks:'Cu²⁺', red:'Zn', e:2},
+  '2 Na + Cl₂ → 2 NaCl':          {ch:[{el:'Na',f:0,t:1},{el:'Cl',f:0,t:-1}], oks:'Cl₂', red:'Na', e:2},
+  'Mg + 2 HCl → MgCl₂ + H₂':      {ch:[{el:'Mg',f:0,t:2},{el:'H',f:1,t:0}], oks:'HCl (H⁺)', red:'Mg', e:2},
+  '2 H₂ + O₂ → 2 H₂O':            {ch:[{el:'H',f:0,t:1},{el:'O',f:0,t:-2}], oks:'O₂', red:'H₂', e:4},
+  'C + O₂ → CO₂':                 {ch:[{el:'C',f:0,t:4},{el:'O',f:0,t:-2}], oks:'O₂', red:'C', e:4},
+  'Cl₂ + 2 KBr → 2 KCl + Br₂':    {ch:[{el:'Cl',f:0,t:-1},{el:'Br',f:-1,t:0}], oks:'Cl₂', red:'KBr (Br⁻)', e:2},
+  '2 KClO₃ → 2 KCl + 3 O₂':       {ch:[{el:'Cl',f:5,t:-1},{el:'O',f:-2,t:0}], oks:'Cl (dalam ClO₃⁻)', red:'O (dalam ClO₃⁻)', e:6}
+};
+let key = 'Zn + Cu²⁺ → Zn²⁺ + Cu';
+
+const sel=document.getElementById('rxn');
+Object.keys(RXN).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function fmt(n){ return n>0?'+'+n:''+n; }
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const r=RXN[key];
+
+  // persamaan
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 18px system-ui'; ctx.textAlign='center';
+  ctx.fillText(key, w/2, 38);
+
+  // sumbu bilangan oksidasi -3..+6
+  const lo=-3, hi=6, x0=w*0.12, x1=w*0.88, axisY=h*0.62;
+  const X = v => x0 + (v-lo)/(hi-lo)*(x1-x0);
+  ctx.strokeStyle='#475569'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(x0,axisY); ctx.lineTo(x1,axisY); ctx.stroke();
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui';
+  for(let v=lo;v<=hi;v++){ const x=X(v); ctx.beginPath(); ctx.moveTo(x,axisY-4); ctx.lineTo(x,axisY+4); ctx.stroke(); ctx.fillText(fmt(v),x,axisY+18); }
+  ctx.fillText('bilangan oksidasi →', (x0+x1)/2, axisY+38);
+
+  // panah perubahan untuk tiap elemen
+  r.ch.forEach((c,i)=>{
+    const up = c.t>c.f;                 // naik = oksidasi
+    const color = up ? '#f87171' : '#38bdf8';
+    const y = axisY - 50 - i*70;
+    const xa=X(c.f), xb=X(c.t);
+    ctx.strokeStyle=color; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(xa,y); ctx.lineTo(xb,y); ctx.stroke();
+    // kepala panah
+    const dir=Math.sign(xb-xa)||1;
+    ctx.beginPath(); ctx.moveTo(xb,y); ctx.lineTo(xb-dir*10,y-6); ctx.lineTo(xb-dir*10,y+6); ctx.fillStyle=color; ctx.fill();
+    // garis ke sumbu
+    ctx.strokeStyle='rgba(148,163,184,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xa,y); ctx.lineTo(xa,axisY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xb,y); ctx.lineTo(xb,axisY); ctx.stroke(); ctx.setLineDash([]);
+    // label
+    ctx.fillStyle=color; ctx.font='bold 15px system-ui'; ctx.textAlign='center';
+    ctx.fillText(`${c.el}: ${fmt(c.f)} → ${fmt(c.t)}`, (xa+xb)/2, y-12);
+    ctx.font='12px system-ui';
+    ctx.fillText(up?'OKSIDASI (lepas e⁻)':'REDUKSI (terima e⁻)', (xa+xb)/2, y+20);
+  });
+
+  ctx.textAlign='left';
+  document.getElementById('rOks').textContent=r.oks;
+  document.getElementById('rRed').textContent=r.red;
+  document.getElementById('rE').textContent=r.e+' e⁻';
+  const ox=r.ch.find(c=>c.t>c.f), rd=r.ch.find(c=>c.t<c.f);
+  document.getElementById('explain').innerHTML =
+    `<b style="color:#f87171">${ox.el}</b> teroksidasi (${fmt(ox.f)}→${fmt(ox.t)}), ` +
+    `<b style="color:#38bdf8">${rd.el}</b> tereduksi (${fmt(rd.f)}→${fmt(rd.t)}). ` +
+    `Total ${r.e} elektron berpindah dari reduktor ke oksidator.`;
+  requestAnimationFrame(draw);
+}
+
+sel.addEventListener('change',e=>key=e.target.value);
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

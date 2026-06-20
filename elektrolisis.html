@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elektrolisis & Hukum Faraday · HaloChem</title>
+<meta name="description" content="Simulasi elektrolisis dan hukum Faraday: hitung massa logam yang mengendap dari arus dan waktu.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Elektrolisis — Hukum Faraday</h1>
+  <p class="sim-sub">Massa logam yang mengendap di katode = (Q · M) / (n · F), dengan Q = I · t dan F = 96.500 C/mol.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Sel elektrolisis"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Muatan Q</div><div class="v" id="rQ" style="font-size:1rem">–</div></div>
+        <div class="item"><div class="k">mol elektron</div><div class="v" id="rMe" style="font-size:1rem">–</div></div>
+        <div class="item"><div class="k">Massa logam</div><div class="v" id="rM" style="color:#fbbf24;font-size:1.1rem">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="ion">Ion logam (di katode)</label>
+        <select id="ion"></select>
+      </div>
+      <div class="control">
+        <label>Arus listrik (I) <span id="iLab">2,0 A</span></label>
+        <input type="range" id="cur" min="0.5" max="10" step="0.5" value="2">
+      </div>
+      <div class="control">
+        <label>Waktu (t) <span id="tLab">30 menit</span></label>
+        <input type="range" id="time" min="1" max="120" step="1" value="30">
+      </div>
+
+      <h2>Perhitungan</h2>
+      <p id="calc" style="color:#9fb0c0;font-size:0.9rem;font-family:monospace"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Gandakan arus atau waktu → massa logam ikut menggandakan.</li>
+        <li>Bandingkan Ag⁺ (n=1) dan Al³⁺ (n=3) pada Q sama — massa molar & n menentukan hasilnya.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · F = 96.500 C/mol · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const F = 96500;
+
+const ION = {
+  'Cu²⁺ → Cu':{M:63.5,n:2,col:'#fb923c'},
+  'Ag⁺ → Ag':{M:108,n:1,col:'#e2e8f0'},
+  'Au³⁺ → Au':{M:197,n:3,col:'#fbbf24'},
+  'Ni²⁺ → Ni':{M:58.7,n:2,col:'#94a3b8'},
+  'Zn²⁺ → Zn':{M:65.4,n:2,col:'#9ca3af'},
+  'Al³⁺ → Al':{M:27,n:3,col:'#cbd5e1'}
+};
+let key='Cu²⁺ → Cu', I=2, tmin=30;
+
+const sel=document.getElementById('ion');
+Object.keys(ION).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+
+function calc(){
+  const {M,n}=ION[key];
+  const t=tmin*60;
+  const Q=I*t;
+  const mole=Q/F;
+  const mass=(Q*M)/(n*F);
+  return {Q,mole,mass,M,n,t};
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+let phase=0;
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const c=calc();
+  phase+=0.02;
+
+  // baterai
+  const by=h*0.12;
+  ctx.strokeStyle='#9fb0c0'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(w*0.30,by); ctx.lineTo(w*0.30,h*0.34); ctx.stroke(); // ke anode
+  ctx.beginPath(); ctx.moveTo(w*0.70,by); ctx.lineTo(w*0.70,h*0.34); ctx.stroke(); // ke katode
+  ctx.beginPath(); ctx.moveTo(w*0.30,by); ctx.lineTo(w*0.44,by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w*0.56,by); ctx.lineTo(w*0.70,by); ctx.stroke();
+  // simbol baterai
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(w*0.47,by-12); ctx.lineTo(w*0.47,by+12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w*0.50,by-7); ctx.lineTo(w*0.50,by+7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w*0.53,by-12); ctx.lineTo(w*0.53,by+12); ctx.stroke();
+  ctx.fillStyle='#f87171'; ctx.font='13px system-ui'; ctx.textAlign='center'; ctx.fillText('+',w*0.45,by-16);
+  ctx.fillStyle='#38bdf8'; ctx.fillText('−',w*0.555,by-16);
+
+  // bejana
+  const bx=w*0.5, bw=w*0.5, top=h*0.34, bot=h*0.9;
+  ctx.strokeStyle='#9fb0c0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(bx-bw/2,top); ctx.lineTo(bx-bw/2,bot); ctx.lineTo(bx+bw/2,bot); ctx.lineTo(bx+bw/2,top); ctx.stroke();
+  ctx.fillStyle='rgba(56,189,248,0.10)'; ctx.fillRect(bx-bw/2+2,top+2,bw-4,bot-top-4);
+
+  // elektrode
+  const ax=w*0.30, kx=w*0.70, eTop=top-2, eBot=bot-14;
+  ctx.fillStyle='#64748b'; ctx.fillRect(ax-7,eTop,14,eBot-eTop);     // anode
+  ctx.fillStyle='#64748b'; ctx.fillRect(kx-7,eTop,14,eBot-eTop);     // katode
+  ctx.fillStyle='#9fb0c0'; ctx.font='12px system-ui';
+  ctx.fillText('anode (+)',ax,bot+18); ctx.fillText('katode (−)',kx,bot+18);
+
+  // endapan logam di katode (tebal ∝ massa, dibatasi)
+  const dep=Math.min(20, c.mass/2);
+  ctx.fillStyle=ION[key].col;
+  ctx.fillRect(kx-7-dep, eTop, dep, eBot-eTop);
+  ctx.fillRect(kx+7, eTop, dep, eBot-eTop);
+
+  // elektron mengalir di kawat (anode->baterai->katode arah konvensional e dari - ke larutan)
+  for(let i=0;i<8;i++){
+    const p=(phase+i/8)%1;
+    // sepanjang jalur katode: turun dari baterai ke katode
+    const x=w*0.70, y=by + p*(h*0.34-by);
+    ctx.beginPath(); ctx.arc(x,y,3,0,7); ctx.fillStyle='#fde047'; ctx.fill();
+  }
+  // ion bergerak ke katode di dalam larutan
+  for(let i=0;i<6;i++){
+    const p=(phase*0.7+i/6)%1;
+    const x=bx-bw/2+20 + p*(kx-7-(bx-bw/2+20));
+    const y=top+30+i*((bot-top-40)/6);
+    ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fillStyle=ION[key].col; ctx.fill();
+  }
+
+  ctx.textAlign='left';
+  document.getElementById('rQ').textContent=c.Q.toFixed(0)+' C';
+  document.getElementById('rMe').textContent=c.mole.toFixed(4)+' mol';
+  document.getElementById('rM').textContent=c.mass.toFixed(3).replace('.',',')+' g';
+  document.getElementById('calc').innerHTML =
+    `Q = I·t = ${I} × ${c.t} = ${c.Q.toFixed(0)} C<br>` +
+    `mol e⁻ = Q/F = ${c.mole.toFixed(4)} mol<br>` +
+    `m = (Q·M)/(n·F) = ${c.mass.toFixed(3).replace('.',',')} g`;
+  requestAnimationFrame(draw);
+}
+
+sel.addEventListener('change',e=>key=e.target.value);
+document.getElementById('cur').addEventListener('input',e=>{ I=+e.target.value; document.getElementById('iLab').textContent=I.toFixed(1).replace('.',',')+' A'; });
+document.getElementById('time').addEventListener('input',e=>{ tmin=+e.target.value; document.getElementById('tLab').textContent=tmin+' menit'; });
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

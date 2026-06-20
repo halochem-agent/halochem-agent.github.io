@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sifat Koligatif Larutan · HaloChem</title>
+<meta name="description" content="Simulasi sifat koligatif: penurunan titik beku dan kenaikan titik didih larutan.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌡️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Sifat Koligatif — Titik Beku &amp; Titik Didih</h1>
+  <p class="sim-sub">Melarutkan zat menurunkan titik beku dan menaikkan titik didih air. Bergantung jumlah partikel, bukan jenisnya.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Garis suhu titik beku dan didih"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Titik beku</div><div class="v" id="rFp" style="color:#38bdf8">0,0 °C</div></div>
+        <div class="item"><div class="k">Titik didih</div><div class="v" id="rBp" style="color:#f87171">100,0 °C</div></div>
+      </div>
+
+      <div class="control">
+        <label for="solute">Zat terlarut</label>
+        <select id="solute"></select>
+      </div>
+      <div class="control">
+        <label>Molalitas <span id="mLab">1,0 m</span></label>
+        <input type="range" id="m" min="0" max="3" step="0.1" value="1">
+      </div>
+
+      <h2>Rumus</h2>
+      <p style="color:#9fb0c0;font-size:0.92rem;font-family:monospace">
+        ΔTf = i · Kf · m  &nbsp;(Kf air = 1,86)<br>
+        ΔTb = i · Kb · m  &nbsp;(Kb air = 0,512)
+      </p>
+      <p id="calc" style="color:#9fb0c0;font-size:0.9rem;font-family:monospace"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Bandingkan glukosa (i=1) dan NaCl (i=2) pada molalitas sama — NaCl berefek dua kali lipat.</li>
+        <li>Inilah alasan garam ditaburkan di jalan bersalju.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · pelarut air · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const Kf=1.86, Kb=0.512;
+
+const SOL = {
+  'Glukosa (i=1)':{i:1}, 'Urea (i=1)':{i:1}, 'NaCl (i=2)':{i:2},
+  'CaCl₂ (i=3)':{i:3}, 'Al₂(SO₄)₃ (i=5)':{i:5}
+};
+let key='NaCl (i=2)', m=1;
+
+const sel=document.getElementById('solute');
+Object.keys(SOL).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; if(k===key)o.selected=true; sel.appendChild(o); });
+
+function vals(){
+  const i=SOL[key].i;
+  const dTf=i*Kf*m, dTb=i*Kb*m;
+  return { i, dTf, dTb, fp:0-dTf, bp:100+dTb };
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const v=vals();
+  // skala suhu -20..115
+  const Tmin=-20, Tmax=115;
+  const x0=w*0.10, x1=w*0.90, axisY=h*0.55;
+  const X = T => x0 + (T-Tmin)/(Tmax-Tmin)*(x1-x0);
+
+  // batang fase larutan (atas) dan air murni (bawah)
+  function phaseBar(y, fp, bp, label){
+    // es
+    ctx.fillStyle='rgba(56,189,248,0.5)'; ctx.fillRect(X(Tmin), y, X(fp)-X(Tmin), 26);
+    // cair
+    ctx.fillStyle='rgba(52,211,153,0.5)'; ctx.fillRect(X(fp), y, X(bp)-X(fp), 26);
+    // uap
+    ctx.fillStyle='rgba(248,113,113,0.45)'; ctx.fillRect(X(bp), y, X(Tmax)-X(bp), 26);
+    ctx.strokeStyle='#2e3a48'; ctx.strokeRect(X(Tmin), y, X(Tmax)-X(Tmin), 26);
+    ctx.fillStyle='#e6edf3'; ctx.font='12px system-ui'; ctx.textAlign='left';
+    ctx.fillText(label, X(Tmin), y-6);
+  }
+  phaseBar(axisY-70, v.fp, v.bp, 'LARUTAN');
+  phaseBar(axisY+30, 0, 100, 'AIR MURNI');
+
+  // sumbu suhu
+  ctx.strokeStyle='#475569'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x0,axisY+90); ctx.lineTo(x1,axisY+90); ctx.stroke();
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  for(let T=-20;T<=115;T+=20){ const x=X(T); ctx.beginPath(); ctx.moveTo(x,axisY+86); ctx.lineTo(x,axisY+94); ctx.stroke(); ctx.fillText(T+'°', x, axisY+108); }
+
+  // garis penanda titik beku & didih larutan
+  ctx.setLineDash([4,4]);
+  ctx.strokeStyle='#38bdf8'; ctx.beginPath(); ctx.moveTo(X(v.fp),axisY-74); ctx.lineTo(X(v.fp),axisY+90); ctx.stroke();
+  ctx.strokeStyle='#f87171'; ctx.beginPath(); ctx.moveTo(X(v.bp),axisY-74); ctx.lineTo(X(v.bp),axisY+90); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // label ΔT
+  ctx.fillStyle='#38bdf8'; ctx.font='bold 12px system-ui'; ctx.textAlign='center';
+  ctx.fillText('ΔTf = '+v.dTf.toFixed(2)+'°', (X(v.fp)+X(0))/2, axisY-80);
+  ctx.fillStyle='#f87171';
+  ctx.fillText('ΔTb = '+v.dTb.toFixed(2)+'°', (X(100)+X(v.bp))/2, axisY-80);
+
+  ctx.textAlign='left';
+
+  document.getElementById('rFp').textContent = v.fp.toFixed(1).replace('.',',')+' °C';
+  document.getElementById('rBp').textContent = v.bp.toFixed(1).replace('.',',')+' °C';
+  document.getElementById('calc').innerHTML =
+    `ΔTf = ${v.i} × 1,86 × ${m.toFixed(1).replace('.',',')} = ${v.dTf.toFixed(2).replace('.',',')} °C<br>` +
+    `ΔTb = ${v.i} × 0,512 × ${m.toFixed(1).replace('.',',')} = ${v.dTb.toFixed(2).replace('.',',')} °C`;
+  requestAnimationFrame(draw);
+}
+
+sel.addEventListener('change',e=>{ key=e.target.value; });
+document.getElementById('m').addEventListener('input',e=>{ m=+e.target.value; document.getElementById('mLab').textContent=m.toFixed(1).replace('.',',')+' m'; });
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

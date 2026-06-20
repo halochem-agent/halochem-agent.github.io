@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larutan Penyangga (Buffer) · HaloChem</title>
+<meta name="description" content="Simulasi larutan penyangga: tambahkan asam/basa kuat dan lihat bagaimana buffer menahan perubahan pH.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧫</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Larutan Penyangga (Buffer)</h1>
+  <p class="sim-sub">Campuran asam lemah (HA) dan basa konjugasinya (A⁻) menahan perubahan pH. Bandingkan dengan air murni.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Perbandingan pH buffer vs air"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">pH buffer</div><div class="v" id="rPh" style="color:#34d399">–</div></div>
+        <div class="item"><div class="k">pH air murni</div><div class="v" id="rPhw" style="color:#f87171">7.00</div></div>
+      </div>
+
+      <div class="control">
+        <label>[HA] asam lemah <span id="haLab">0,10 M</span></label>
+        <input type="range" id="ha" min="0.02" max="0.5" step="0.02" value="0.1">
+      </div>
+      <div class="control">
+        <label>[A⁻] basa konjugasi <span id="aLab">0,10 M</span></label>
+        <input type="range" id="a" min="0.02" max="0.5" step="0.02" value="0.1">
+      </div>
+      <div class="control">
+        <label for="pka">pKa asam <span id="pkaLab">4,74 (asetat)</span></label>
+        <input type="range" id="pka" min="3" max="10" step="0.1" value="4.74">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="addAcid">+ Tetes asam kuat</button>
+        <button class="btn" id="addBase">+ Tetes basa kuat</button>
+        <button class="btn ghost" id="reset">Reset tetesan</button>
+      </div>
+
+      <p id="info" style="color:#9fb0c0;font-size:0.9rem"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Tambahkan asam/basa kuat — pH buffer hampir tak berubah, sedangkan air murni berubah drastis.</li>
+        <li>Buffer paling kuat saat [HA] = [A⁻] (pH = pKa).</li>
+        <li>Habiskan salah satu komponen → buffer "jebol" dan pH melonjak.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · Henderson-Hasselbalch · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const Vol = 1.0; // L
+
+let HA0 = 0.1, A0 = 0.1, pKa = 4.74;
+let added = 0;      // mol asam(+)/basa(-) kuat yang ditambahkan
+const Ka = () => Math.pow(10, -pKa);
+
+function buffer(){
+  // mol awal
+  let nHA = HA0 * Vol, nA = A0 * Vol;
+  // tambah asam kuat (added>0): A- + H+ -> HA ; basa kuat (added<0): HA + OH- -> A-
+  let x = added;
+  nHA += x; nA -= x;
+  let pH, broken = false;
+  if (nA <= 1e-6) { // semua basa konjugasi habis -> asam kuat berlebih dominan
+    const excess = -nA; broken = true;
+    pH = excess>0 ? -Math.log10(excess/Vol) : 0.5*(pKa - Math.log10(HA0));
+  } else if (nHA <= 1e-6) {
+    const excess = -nHA; broken = true;
+    pH = excess>0 ? 14 + Math.log10(excess/Vol) : 14 - 0.5*(pKa); // kasar
+  } else {
+    pH = pKa + Math.log10(nA / nHA);
+  }
+  return { pH: Math.max(0, Math.min(14, pH)), broken };
+}
+function waterPH(){
+  // air murni + asam/basa kuat yang sama
+  if (added > 0) return Math.max(0, -Math.log10(added/Vol));
+  if (added < 0) return Math.min(14, 14 + Math.log10(-added/Vol));
+  return 7;
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function phColor(pH){
+  // skala pH -> warna (merah asam -> hijau netral -> ungu basa)
+  if (pH<7){ const t=pH/7; return `rgb(${230-t*60},${60+t*150},${40+t*60})`; }
+  const t=(pH-7)/7; return `rgb(${120-t*60},${190-t*120},${90+t*150})`;
+}
+
+function tube(x,w,h,pH,label,sub){
+  const top=60, bot=h-60, th=bot-top;
+  // tabung
+  ctx.strokeStyle='#9fb0c0'; ctx.lineWidth=2;
+  ctx.strokeRect(x-w/2, top, w, th);
+  // cairan sesuai pH
+  ctx.fillStyle = phColor(pH);
+  ctx.fillRect(x-w/2+2, top+2, w-4, th-4);
+  // skala pH di sisi
+  // angka pH
+  ctx.fillStyle='#0b0f14'; ctx.font='bold 26px system-ui'; ctx.textAlign='center';
+  ctx.fillText('pH '+pH.toFixed(2), x, top+th/2);
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 15px system-ui';
+  ctx.fillText(label, x, bot+26);
+  ctx.fillStyle='#9fb0c0'; ctx.font='12px system-ui';
+  ctx.fillText(sub, x, bot+44);
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const b = buffer();
+  tube(w*0.30, w*0.22, h, b.pH, 'LARUTAN BUFFER', `[HA]=${HA0.toFixed(2)}  [A⁻]=${A0.toFixed(2)}`);
+  tube(w*0.70, w*0.22, h, waterPH(), 'AIR MURNI', 'tanpa penyangga');
+
+  ctx.fillStyle='#9fb0c0'; ctx.font='13px system-ui'; ctx.textAlign='left';
+  const net = added>0 ? `+${added.toFixed(3)} mol asam kuat` : added<0 ? `${(-added).toFixed(3)} mol basa kuat` : 'belum ada tambahan';
+  ctx.fillText('Ditambahkan: '+net, 16, 28);
+
+  document.getElementById('rPh').textContent = b.pH.toFixed(2);
+  document.getElementById('rPhw').textContent = waterPH().toFixed(2);
+  document.getElementById('info').textContent = b.broken
+    ? 'Kapasitas buffer terlampaui — salah satu komponen habis, pH melonjak.'
+    : 'Buffer bekerja: perubahan pH kecil meski ditambah asam/basa kuat.';
+  requestAnimationFrame(draw);
+}
+
+document.getElementById('ha').addEventListener('input',e=>{ HA0=+e.target.value; document.getElementById('haLab').textContent=HA0.toFixed(2).replace('.',',')+' M'; });
+document.getElementById('a').addEventListener('input',e=>{ A0=+e.target.value; document.getElementById('aLab').textContent=A0.toFixed(2).replace('.',',')+' M'; });
+document.getElementById('pka').addEventListener('input',e=>{ pKa=+e.target.value; document.getElementById('pkaLab').textContent=pKa.toFixed(2).replace('.',','); });
+document.getElementById('addAcid').addEventListener('click',()=>{ added+=0.02; });
+document.getElementById('addBase').addEventListener('click',()=>{ added-=0.02; });
+document.getElementById('reset').addEventListener('click',()=>{ added=0; });
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Atom Rutherford · HaloChem</title>
+<meta name="description" content="Simulasi hamburan partikel alfa Rutherford: kebanyakan lurus, sedikit membelok, sangat sedikit memantul balik.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Model Atom Rutherford — Hamburan Partikel Alfa</h1>
+  <p class="sim-sub">Partikel alfa (+) ditembakkan ke inti emas yang bermuatan positif dan sangat kecil. Amati pembelokannya.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Hamburan partikel alfa"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Ditembakkan</div><div class="v" id="rTot">0</div></div>
+        <div class="item"><div class="k">Membelok besar</div><div class="v" id="rBig" style="color:#fbbf24">0</div></div>
+        <div class="item"><div class="k">Memantul balik</div><div class="v" id="rBack" style="color:#f87171">0</div></div>
+      </div>
+
+      <div class="control">
+        <label for="z">Muatan inti <span id="zLab">tinggi</span></label>
+        <input type="range" id="z" min="20" max="160" step="10" value="90">
+      </div>
+      <div class="control">
+        <label for="spd">Energi partikel alfa <span id="spdLab">sedang</span></label>
+        <input type="range" id="spd" min="80" max="260" step="10" value="150">
+      </div>
+      <div class="control">
+        <label for="rate">Laju tembak <span id="rateLab">sedang</span></label>
+        <input type="range" id="rate" min="1" max="8" step="1" value="3">
+      </div>
+      <div class="btn-row"><button class="btn ghost" id="reset">Reset hitungan</button></div>
+
+      <h2>Kesimpulan Rutherford (1911)</h2>
+      <ul>
+        <li><b>Kebanyakan lurus</b> → atom sebagian besar ruang kosong.</li>
+        <li><b>Sebagian membelok</b> → ada muatan positif terpusat.</li>
+        <li><b>Sedikit memantul balik</b> → inti sangat kecil, padat, dan masif.</li>
+      </ul>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Perbesar muatan inti → lebih banyak pembelokan tajam.</li>
+        <li>Perbesar energi alfa → partikel lebih sulit dibelokkan.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · gaya Coulomb · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W=660, H=440;
+
+let Zc = 90, spd = 150, rate = 3;
+let parts = [];
+let tot=0, big=0, back=0;
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  W=w; H=h;
+  return { w, h };
+}
+
+function spawn(){
+  const y = 20 + Math.random()*(H-40);
+  parts.push({ x:-10, y, vx:spd, vy:0, trail:[], counted:false, backed:false });
+  tot++;
+}
+
+let acc=0, last=performance.now();
+function step(now){
+  const dt = Math.min(0.03,(now-last)/1000); last=now;
+  setupDPR();
+  const nx = W*0.62, ny = H*0.5;   // posisi inti
+  const K = Zc * 9000;             // kekuatan tolakan (skala)
+
+  acc += rate*dt*12;
+  while (acc >= 1){ spawn(); acc--; }
+
+  ctx.clearRect(0,0,W,H);
+
+  // sumber
+  ctx.fillStyle='#475569'; ctx.fillRect(0, H*0.5-26, 10, 52);
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui'; ctx.textAlign='left';
+  ctx.fillText('sumber α', 4, H*0.5-32);
+
+  // inti
+  const grd = ctx.createRadialGradient(nx,ny,0,nx,ny,16);
+  grd.addColorStop(0,'#fde047'); grd.addColorStop(1,'rgba(251,191,36,0)');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(nx,ny,16,0,7); ctx.fill();
+  ctx.fillStyle='#f59e0b'; ctx.beginPath(); ctx.arc(nx,ny,4,0,7); ctx.fill();
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText('inti (+)', nx, ny+28);
+
+  for (let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    // integrasi beberapa substep untuk stabilitas dekat inti
+    for (let s=0;s<3;s++){
+      const dx=p.x-nx, dy=p.y-ny;
+      const r2=dx*dx+dy*dy+60;
+      const r=Math.sqrt(r2);
+      const f=K/r2;
+      p.vx += f*(dx/r)*dt; p.vy += f*(dy/r)*dt;
+      p.x += p.vx*dt; p.y += p.vy*dt;
+    }
+    p.trail.push({x:p.x,y:p.y}); if(p.trail.length>40) p.trail.shift();
+    // hitung pembelokan
+    const ang = Math.atan2(p.vy,p.vx);
+    if (!p.counted && Math.abs(ang) > Math.PI/4 && p.x>W*0.2){ big++; p.counted=true; }
+    if (!p.backed && p.vx<0){ back++; p.backed=true; }
+    // trail
+    ctx.strokeStyle='rgba(248,113,113,0.5)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); p.trail.forEach((t,j)=> j?ctx.lineTo(t.x,t.y):ctx.moveTo(t.x,t.y)); ctx.stroke();
+    // partikel
+    ctx.fillStyle='#f87171'; ctx.beginPath(); ctx.arc(p.x,p.y,3,0,7); ctx.fill();
+    if (p.x<-30||p.x>W+30||p.y<-30||p.y>H+30) parts.splice(i,1);
+  }
+
+  document.getElementById('rTot').textContent=tot;
+  document.getElementById('rBig').textContent=big;
+  document.getElementById('rBack').textContent=back;
+  requestAnimationFrame(step);
+}
+
+document.getElementById('z').addEventListener('input',e=>{ Zc=+e.target.value;
+  document.getElementById('zLab').textContent = Zc<60?'rendah':Zc<120?'sedang':'tinggi'; });
+document.getElementById('spd').addEventListener('input',e=>{ spd=+e.target.value;
+  document.getElementById('spdLab').textContent = spd<130?'rendah':spd<210?'sedang':'tinggi'; });
+document.getElementById('rate').addEventListener('input',e=>{ rate=+e.target.value;
+  document.getElementById('rateLab').textContent = rate<3?'lambat':rate<6?'sedang':'cepat'; });
+document.getElementById('reset').addEventListener('click',()=>{ tot=0;big=0;back=0;parts=[]; });
+
+requestAnimationFrame(step);
+</script>
+</body>
+</html>

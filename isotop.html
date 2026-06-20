@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isotop & Kelimpahan · HaloChem</title>
+<meta name="description" content="Simulasi isotop dan kelimpahan: hitung massa atom rata-rata dari kelimpahan relatif isotop.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Isotop &amp; Kelimpahan</h1>
+  <p class="sim-sub">Isotop = atom dengan jumlah proton sama tapi neutron berbeda. Massa atom rata-rata = rata-rata berbobot kelimpahannya.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Dua isotop dan massa rata-rata"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item" style="min-width:170px"><div class="k">Massa atom rata-rata</div><div class="v" id="rAvg" style="color:#fbbf24">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="elem">Unsur</label>
+        <select id="elem"></select>
+      </div>
+      <div class="control">
+        <label>Kelimpahan <span id="i1name">isotop ringan</span> <span id="abLab">50%</span></label>
+        <input type="range" id="ab" min="0" max="100" step="0.1" value="50">
+      </div>
+
+      <div class="btn-row"><button class="btn" id="real">Gunakan kelimpahan asli</button></div>
+
+      <h2>Perhitungan</h2>
+      <p id="calc" style="color:#9fb0c0;font-size:0.9rem;font-family:monospace"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Geser kelimpahan — massa rata-rata bergeser ke arah isotop yang lebih banyak.</li>
+        <li>Klik "kelimpahan asli" — massa rata-rata mendekati nilai di tabel periodik.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · data isotop alami · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const ELEM = {
+  'Klorin (Cl)': {sym:'Cl',Z:17, iso:[{A:35,m:34.969,real:75.77},{A:37,m:36.966,real:24.23}]},
+  'Boron (B)':   {sym:'B', Z:5,  iso:[{A:10,m:10.013,real:19.9},{A:11,m:11.009,real:80.1}]},
+  'Tembaga (Cu)':{sym:'Cu',Z:29, iso:[{A:63,m:62.930,real:69.15},{A:65,m:64.928,real:30.85}]},
+  'Bromin (Br)': {sym:'Br',Z:35, iso:[{A:79,m:78.918,real:50.69},{A:81,m:80.916,real:49.31}]},
+  'Litium (Li)': {sym:'Li',Z:3,  iso:[{A:6,m:6.015,real:7.59},{A:7,m:7.016,real:92.41}]},
+  'Perak (Ag)':  {sym:'Ag',Z:47, iso:[{A:107,m:106.905,real:51.84},{A:109,m:108.905,real:48.16}]},
+  'Antimon (Sb)':{sym:'Sb',Z:51, iso:[{A:121,m:120.904,real:57.21},{A:123,m:122.904,real:42.79}]}
+};
+let key='Klorin (Cl)', ab1=50;
+
+const sel=document.getElementById('elem');
+Object.keys(ELEM).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+
+function avg(){
+  const e=ELEM[key];
+  return e.iso[0].m*(ab1/100) + e.iso[1].m*((100-ab1)/100);
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function nucleus(cx,cy,Z,N,col){
+  // gambar inti: proton (merah) + neutron (abu) sebagai gugus titik
+  const total=Z+N, R=26;
+  ctx.beginPath(); ctx.arc(cx,cy,R+4,0,7); ctx.fillStyle='rgba(148,163,184,0.12)'; ctx.fill();
+  for(let i=0;i<total;i++){
+    const ang=i*2.39996, rr=R*Math.sqrt(i/total);
+    const x=cx+rr*Math.cos(ang), y=cy+rr*Math.sin(ang);
+    ctx.beginPath(); ctx.arc(x,y,3.4,0,7);
+    ctx.fillStyle = i<Z ? '#f87171' : '#94a3b8'; ctx.fill();
+  }
+}
+
+function isoPanel(cx, iso, ab, col){
+  const { w, h } = {w:cv.clientWidth,h:cv.clientWidth*440/660};
+  const e=ELEM[key];
+  const cy=h*0.28;
+  nucleus(cx,cy,e.Z, iso.A-e.Z);
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 18px system-ui'; ctx.textAlign='center';
+  ctx.fillText(`${e.sym}-${iso.A}`, cx, cy+52);
+  ctx.font='12px system-ui'; ctx.fillStyle='#9fb0c0';
+  ctx.fillText(`massa ${iso.m.toFixed(3)} sma`, cx, cy+70);
+  ctx.fillText(`${e.Z}p⁺ + ${iso.A-e.Z}n⁰`, cx, cy+86);
+  // bar kelimpahan
+  const barW=w*0.22, barX=cx-barW/2, barY=cy+100, maxH=h*0.18;
+  ctx.strokeStyle='#2e3a48'; ctx.strokeRect(barX,barY,barW,maxH);
+  ctx.fillStyle=col; ctx.fillRect(barX,barY+maxH*(1-ab/100),barW,maxH*ab/100);
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 14px system-ui';
+  ctx.fillText(ab.toFixed(1)+'%', cx, barY+maxH+20);
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const e=ELEM[key];
+  isoPanel(w*0.26, e.iso[0], ab1, '#38bdf8');
+  isoPanel(w*0.74, e.iso[1], 100-ab1, '#fbbf24');
+
+  // legenda proton/neutron
+  ctx.textAlign='left'; ctx.font='11px system-ui';
+  ctx.fillStyle='#f87171'; ctx.fillText('● proton', 12, h-14);
+  ctx.fillStyle='#94a3b8'; ctx.fillText('● neutron', 84, h-14);
+
+  // sumbu massa di bawah
+  const a=avg();
+  const m1=e.iso[0].m, m2=e.iso[1].m;
+  const x0=w*0.30, x1=w*0.70, ay=h*0.92;
+  ctx.strokeStyle='#475569'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(x0,ay); ctx.lineTo(x1,ay); ctx.stroke();
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText(m1.toFixed(1),x0,ay+16); ctx.fillText(m2.toFixed(1),x1,ay+16);
+  const ax = x0 + (a-m1)/(m2-m1)*(x1-x0);
+  ctx.fillStyle='#fbbf24'; ctx.beginPath(); ctx.moveTo(ax,ay-8); ctx.lineTo(ax-6,ay-18); ctx.lineTo(ax+6,ay-18); ctx.fill();
+  ctx.font='bold 13px system-ui'; ctx.fillText(a.toFixed(2)+' sma', ax, ay-24);
+
+  ctx.textAlign='left';
+  document.getElementById('rAvg').textContent=a.toFixed(2)+' sma';
+  document.getElementById('i1name').textContent=`${e.sym}-${e.iso[0].A}`;
+  document.getElementById('calc').innerHTML =
+    `Ar = (${e.iso[0].m.toFixed(3)}×${ab1.toFixed(1)}% ) + (${e.iso[1].m.toFixed(3)}×${(100-ab1).toFixed(1)}%)<br>` +
+    `&nbsp;&nbsp;= ${a.toFixed(2)} sma`;
+  requestAnimationFrame(draw);
+}
+
+sel.addEventListener('change',e=>{ key=e.target.value; });
+document.getElementById('ab').addEventListener('input',e=>{ ab1=+e.target.value; document.getElementById('abLab').textContent=ab1.toFixed(1)+'%'; });
+document.getElementById('real').addEventListener('click',()=>{
+  ab1=ELEM[key].iso[0].real; document.getElementById('ab').value=ab1; document.getElementById('abLab').textContent=ab1.toFixed(1)+'%';
+});
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

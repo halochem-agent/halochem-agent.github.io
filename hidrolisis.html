@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hidrolisis Garam · HaloChem</title>
+<meta name="description" content="Simulasi hidrolisis garam: tentukan sifat asam/basa/netral garam dari asam dan basa pembentuknya.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Hidrolisis Garam</h1>
+  <p class="sim-sub">Garam berasal dari reaksi asam + basa. Sifat larutannya bergantung pada kekuatan asam dan basa pembentuknya.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Larutan garam dan sifatnya"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">pH</div><div class="v" id="rPh">7.00</div></div>
+        <div class="item" style="min-width:120px"><div class="k">Sifat larutan</div><div class="v" id="rSifat" style="font-size:1rem">Netral</div></div>
+      </div>
+
+      <div class="control">
+        <label for="acid">Asam pembentuk</label>
+        <select id="acid">
+          <option value="strong">Asam kuat (mis. HCl)</option>
+          <option value="weak">Asam lemah (mis. CH₃COOH, Ka=1,8·10⁻⁵)</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="base">Basa pembentuk</label>
+        <select id="base">
+          <option value="strong">Basa kuat (mis. NaOH)</option>
+          <option value="weak">Basa lemah (mis. NH₃, Kb=1,8·10⁻⁵)</option>
+        </select>
+      </div>
+      <div class="control">
+        <label>Konsentrasi garam <span id="cLab">0,10 M</span></label>
+        <input type="range" id="conc" min="0.01" max="1" step="0.01" value="0.1">
+      </div>
+
+      <h2>Jenis garam</h2>
+      <p id="type" style="color:#9fb0c0;font-size:0.92rem"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Kuat + kuat (NaCl) → tidak terhidrolisis → netral.</li>
+        <li>Lemah + kuat (CH₃COONa) → anion terhidrolisis → basa.</li>
+        <li>Kuat + lemah (NH₄Cl) → kation terhidrolisis → asam.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · Kw = 1·10⁻¹⁴ · model disederhanakan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const Kw=1e-14, Ka=1.8e-5, Kb=1.8e-5;
+
+let acid='strong', base='strong', C=0.1;
+
+function analyze(){
+  let pH, sifat, type, who;
+  if (acid==='strong' && base==='strong'){
+    pH=7; sifat='Netral'; type='Garam dari asam kuat + basa kuat. Tidak terhidrolisis.'; who='—';
+  } else if (acid==='weak' && base==='strong'){
+    // anion A- terhidrolisis (basa): Kb' = Kw/Ka
+    const Kbh=Kw/Ka; const OH=Math.sqrt(Kbh*C); pH=14+Math.log10(OH);
+    sifat='Basa'; type='Garam dari asam lemah + basa kuat. Anion terhidrolisis (hidrolisis parsial).'; who='Anion (A⁻) + H₂O → HA + OH⁻';
+  } else if (acid==='strong' && base==='weak'){
+    const Kah=Kw/Kb; const H=Math.sqrt(Kah*C); pH=-Math.log10(H);
+    sifat='Asam'; type='Garam dari asam kuat + basa lemah. Kation terhidrolisis (hidrolisis parsial).'; who='Kation (BH⁺) + H₂O → B + H₃O⁺';
+  } else {
+    // lemah + lemah: bandingkan Ka vs Kb. Di sini Ka=Kb -> netral
+    pH = 7 + 0.5*(Math.log10(Ka) - Math.log10(Kb)); // = 7 bila Ka=Kb
+    sifat = Ka>Kb?'Asam':Ka<Kb?'Basa':'Mendekati netral';
+    type='Garam dari asam lemah + basa lemah. Kation dan anion sama-sama terhidrolisis (hidrolisis total).';
+    who='Bergantung Ka vs Kb';
+  }
+  return { pH:Math.max(0,Math.min(14,pH)), sifat, type, who };
+}
+
+function phColor(pH){
+  if (pH<7){ const t=pH/7; return `rgb(${230-t*60},${60+t*150},${40+t*60})`; }
+  const t=(pH-7)/7; return `rgb(${120-t*60},${190-t*120},${90+t*150})`;
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const a=analyze();
+
+  // beaker
+  const bx=w*0.30, bw=w*0.34, top=h*0.18, bot=h*0.86;
+  ctx.strokeStyle='#9fb0c0'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(bx-bw/2,top); ctx.lineTo(bx-bw/2,bot); ctx.lineTo(bx+bw/2,bot); ctx.lineTo(bx+bw/2,top); ctx.stroke();
+  ctx.fillStyle=phColor(a.pH); ctx.fillRect(bx-bw/2+2, top+24, bw-4, bot-top-26);
+  ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fillRect(bx-bw/2+2, top+24, bw-4, 6);
+  ctx.fillStyle='#0b0f14'; ctx.font='bold 22px system-ui'; ctx.textAlign='center';
+  ctx.fillText('pH '+a.pH.toFixed(2), bx, (top+bot)/2);
+
+  // skala asam-basa
+  const sx0=w*0.58, sx1=w*0.92, sy=h*0.46;
+  const grad=ctx.createLinearGradient(sx0,0,sx1,0);
+  grad.addColorStop(0,'#e63a28'); grad.addColorStop(0.5,'#34d399'); grad.addColorStop(1,'#7c3aed');
+  ctx.fillStyle=grad; ctx.fillRect(sx0,sy,sx1-sx0,16);
+  ctx.fillStyle='#9fb0c0'; ctx.font='11px system-ui'; ctx.textAlign='center';
+  ctx.fillText('0 (asam)',sx0,sy+32); ctx.fillText('7',((sx0+sx1)/2),sy+32); ctx.fillText('14 (basa)',sx1,sy+32);
+  // penanda
+  const mx=sx0+(a.pH/14)*(sx1-sx0);
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(mx,sy-6); ctx.lineTo(mx-6,sy-16); ctx.lineTo(mx+6,sy-16); ctx.fill();
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 14px system-ui';
+  ctx.fillText(a.sifat, (sx0+sx1)/2, sy-24);
+
+  ctx.textAlign='left';
+  document.getElementById('rPh').textContent=a.pH.toFixed(2);
+  const el=document.getElementById('rSifat'); el.textContent=a.sifat;
+  el.style.color = a.pH<6.5?'#f87171':a.pH>7.5?'#a78bfa':'#34d399';
+  document.getElementById('type').innerHTML = a.type + (a.who!=='—'?`<br><span style="color:#fbbf24">${a.who}</span>`:'');
+  requestAnimationFrame(draw);
+}
+
+document.getElementById('acid').addEventListener('change',e=>acid=e.target.value);
+document.getElementById('base').addEventListener('change',e=>base=e.target.value);
+document.getElementById('conc').addEventListener('input',e=>{ C=+e.target.value; document.getElementById('cLab').textContent=C.toFixed(2).replace('.',',')+' M'; });
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

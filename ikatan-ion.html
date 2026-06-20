@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pembentukan Ikatan Ion · HaloChem</title>
+<meta name="description" content="Simulasi pembentukan ikatan ion: pilih logam dan nonlogam, saksikan transfer elektron dan rumus senyawa terbentuk.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚛️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Pembentukan Ikatan Ion</h1>
+  <p class="sim-sub">Atom logam melepaskan elektron valensi; atom nonlogam menerimanya hingga oktet. Terbentuklah ion dan senyawa.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Model Bohr transfer elektron"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item" style="min-width:160px"><div class="k">Rumus senyawa</div><div class="v" id="rFormula" style="font-size:1.6rem">NaCl</div></div>
+      </div>
+
+      <div class="control">
+        <label for="metal">Logam (melepas elektron)</label>
+        <select id="metal">
+          <option value="Na">Natrium — Na</option>
+          <option value="K">Kalium — K</option>
+          <option value="Mg">Magnesium — Mg</option>
+          <option value="Ca">Kalsium — Ca</option>
+          <option value="Al">Aluminium — Al</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="non">Nonlogam (menerima elektron)</label>
+        <select id="non">
+          <option value="Cl">Klorin — Cl</option>
+          <option value="F">Fluorin — F</option>
+          <option value="O">Oksigen — O</option>
+          <option value="S">Belerang — S</option>
+          <option value="N">Nitrogen — N</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="bond">▶ Bentuk ikatan</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+
+      <p id="explain" style="color:#9fb0c0;font-size:0.92rem"></p>
+
+      <h2>Cara membaca</h2>
+      <ul>
+        <li>Titik <b style="color:#fbbf24">kuning</b> = elektron valensi yang berpindah.</li>
+        <li>Setelah berpindah, logam jadi <b>kation (+)</b>, nonlogam jadi <b>anion (−)</b>.</li>
+        <li>Jumlah atom disesuaikan agar muatan total nol (cara silang muatan).</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const METAL = {
+  Na:{sym:'Na',shells:[2,8,1],val:1,name:'Natrium'},
+  K :{sym:'K', shells:[2,8,8,1],val:1,name:'Kalium'},
+  Mg:{sym:'Mg',shells:[2,8,2],val:2,name:'Magnesium'},
+  Ca:{sym:'Ca',shells:[2,8,8,2],val:2,name:'Kalsium'},
+  Al:{sym:'Al',shells:[2,8,3],val:3,name:'Aluminium'}
+};
+const NON = {
+  Cl:{sym:'Cl',shells:[2,8,7],need:1,name:'Klorida'},
+  F :{sym:'F', shells:[2,7],need:1,name:'Fluorida'},
+  O :{sym:'O', shells:[2,6],need:2,name:'Oksida'},
+  S :{sym:'S', shells:[2,8,6],need:2,name:'Sulfida'},
+  N :{sym:'N', shells:[2,5],need:3,name:'Nitrida'}
+};
+const SUB = {1:'',2:'₂',3:'₃'};
+function gcd(a,b){ return b?gcd(b,a%b):a; }
+
+let mKey='Na', nKey='Cl';
+let t = 0, playing = false, bonded = false;
+
+function combo() {
+  const m = METAL[mKey], n = NON[nKey];
+  const a = m.val, b = n.need, g = gcd(a,b);
+  const mCount = b/g, nCount = a/g;
+  return { m, n, mCount, nCount };
+}
+
+function formula() {
+  const { m, n, mCount, nCount } = combo();
+  return m.sym + SUB[mCount] + n.sym + SUB[nCount];
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function elecPos(cx, cy, r, slot, slots, rot=0) {
+  const ang = -Math.PI/2 + rot + slot * (2*Math.PI/slots);
+  return { x: cx + r*Math.cos(ang), y: cy + r*Math.sin(ang) };
+}
+
+function shellRadii(shells, base, gap) {
+  return shells.map((_,i)=> base + (i+1)*gap);
+}
+
+function layout(w, h) {
+  const { mCount, nCount } = combo();
+  const colM = w*0.26, colN = w*0.74;
+  const metals=[], nons=[];
+  for (let i=0;i<mCount;i++) metals.push({ x:colM, y:(h)*((i+1)/(mCount+1)) });
+  for (let i=0;i<nCount;i++) nons.push({ x:colN, y:(h)*((i+1)/(nCount+1)) });
+  return { metals, nons };
+}
+
+function draw() {
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const { m, n, mCount, nCount } = combo();
+  const ease = t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+  const { metals, nons } = layout(w, h);
+
+  const base = 12, gap = Math.min(13, (Math.min(w,h)/2 - 30) / 5);
+
+  // kumpulkan sumber (elektron valensi tiap logam) & target (slot kosong tiap nonlogam)
+  const sources=[], targets=[];
+  metals.forEach(c=>{
+    const radii = shellRadii(m.shells, base, gap);
+    const last = m.shells.length-1;
+    for (let s=0;s<m.val;s++) sources.push(elecPos(c.x,c.y,radii[last],s,Math.max(m.val,1),0.4));
+  });
+  nons.forEach(c=>{
+    const radii = shellRadii(n.shells, base, gap);
+    const last = n.shells.length-1;
+    const own = n.shells[last];
+    for (let s=0;s<n.need;s++) targets.push(elecPos(c.x,c.y,radii[last],own+s,8,0));
+  });
+
+  // gambar atom logam
+  metals.forEach(c=>{
+    const radii = shellRadii(m.shells, base, gap);
+    const drawShells = bonded ? m.shells.length-1 : m.shells.length;
+    for (let i=0;i<drawShells;i++){
+      ctx.beginPath(); ctx.arc(c.x,c.y,radii[i],0,7);
+      ctx.strokeStyle='#2e3a48'; ctx.lineWidth=1; ctx.stroke();
+      const isLast = i===m.shells.length-1;
+      const count = m.shells[i];
+      if (isLast && !bonded) continue; // valensi digambar terpisah (kuning saat pindah)
+      for (let s=0;s<count;s++){
+        const p=elecPos(c.x,c.y,radii[i],s,count,i*0.3);
+        dot(p.x,p.y,'#cdd9e5');
+      }
+    }
+    nucleus(c.x,c.y, m.sym, bonded? '+'+(m.val>1?m.val:'') : '');
+  });
+
+  // gambar atom nonlogam
+  nons.forEach(c=>{
+    const radii = shellRadii(n.shells, base, gap);
+    for (let i=0;i<n.shells.length;i++){
+      ctx.beginPath(); ctx.arc(c.x,c.y,radii[i],0,7);
+      ctx.strokeStyle='#2e3a48'; ctx.lineWidth=1; ctx.stroke();
+      const count = n.shells[i];
+      const isLast = i===n.shells.length-1;
+      const slots = isLast ? 8 : count;
+      for (let s=0;s<count;s++){
+        const p=elecPos(c.x,c.y,radii[i],s,slots,0);
+        dot(p.x,p.y,'#cdd9e5');
+      }
+    }
+    nucleus(c.x,c.y, n.sym, bonded? '−'+(n.need>1?n.need:'') : '');
+  });
+
+  // elektron yang berpindah (kuning)
+  const k = Math.min(sources.length, targets.length);
+  for (let i=0;i<k;i++){
+    const s=sources[i], d=targets[i];
+    let x,y;
+    if (bonded){ x=d.x; y=d.y; }
+    else { x = s.x + (d.x-s.x)*ease; y = s.y + (d.y-s.y)*ease; }
+    // sedikit lengkung
+    if (playing){ y -= Math.sin(ease*Math.PI)*18; }
+    dot(x,y,'#fbbf24', true);
+  }
+
+  document.getElementById('rFormula').textContent = formula();
+
+  if (playing){
+    t += 1/90;                 // ~1.5 dtk
+    if (t>=1){ t=1; playing=false; bonded=true; }
+  }
+  requestAnimationFrame(draw);
+}
+
+function dot(x,y,color,glow){
+  ctx.beginPath(); ctx.arc(x,y,4,0,7);
+  ctx.fillStyle=color; ctx.fill();
+  if (glow){ ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.strokeStyle='rgba(251,191,36,0.5)'; ctx.lineWidth=2; ctx.stroke(); }
+}
+function nucleus(x,y,sym,charge){
+  ctx.beginPath(); ctx.arc(x,y,12,0,7);
+  ctx.fillStyle='#232c38'; ctx.fill();
+  ctx.strokeStyle='#475569'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 12px system-ui';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(sym, x, y);
+  if (charge){
+    ctx.fillStyle = charge[0]==='+' ? '#f87171' : '#38bdf8';
+    ctx.font='bold 11px system-ui';
+    ctx.fillText(charge, x+14, y-12);
+  }
+  ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+}
+
+function updateExplain(){
+  const { m, n, mCount, nCount } = combo();
+  const el = document.getElementById('explain');
+  el.innerHTML = `Setiap atom <b>${m.name.split(' ')[0]||m.sym}</b> melepas <b>${m.val}</b> elektron (jadi ${m.sym}<sup>${m.val>1?m.val:''}+</sup>), `
+    + `setiap atom <b>${n.sym}</b> menerima <b>${n.need}</b> elektron (jadi ${n.sym}<sup>${n.need>1?n.need:''}−</sup>). `
+    + `Perbandingan ${mCount} : ${nCount} → <b>${formula()}</b>.`;
+}
+
+function reset(){ t=0; playing=false; bonded=false; updateExplain(); }
+document.getElementById('metal').addEventListener('change',e=>{ mKey=e.target.value; reset(); });
+document.getElementById('non').addEventListener('change',e=>{ nKey=e.target.value; reset(); });
+document.getElementById('bond').addEventListener('click',()=>{ if(!bonded){ t=0; playing=true; } });
+document.getElementById('reset').addEventListener('click', reset);
+
+updateExplain();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

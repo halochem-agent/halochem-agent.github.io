@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pH & Titrasi Asam-Basa · HaloChem</title>
+<meta name="description" content="Simulasi titrasi asam-basa interaktif: teteskan NaOH ke dalam asam, amati kurva pH dan perubahan warna indikator.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧪</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">pH &amp; Titrasi Asam-Basa</h1>
+  <p class="sim-sub">25 mL asam 0,1 M dititrasi dengan NaOH 0,1 M. Teteskan basa dan amati pH-nya.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Visualisasi titrasi dan kurva pH"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Volume basa</div><div class="v"><span id="rVol">0</span> mL</div></div>
+        <div class="item"><div class="k">pH</div><div class="v" id="rPh">1.0</div></div>
+        <div class="item"><div class="k">Sifat</div><div class="v" id="rState" style="font-size:1rem">Asam</div></div>
+      </div>
+
+      <div class="control">
+        <label for="acid">Jenis asam</label>
+        <select id="acid">
+          <option value="strong">Asam kuat — HCl</option>
+          <option value="weak">Asam lemah — CH₃COOH (cuka)</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="ind">Indikator</label>
+        <select id="ind">
+          <option value="pp">Fenolftalein (tak berwarna → merah muda)</option>
+          <option value="mo">Metil jingga (merah → kuning)</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="vol">Volume NaOH ditambahkan <span id="volLbl">0,0 mL</span></label>
+        <input type="range" id="vol" min="0" max="50" step="0.25" value="0">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="add1">+ 1 mL</button>
+        <button class="btn" id="add5">+ 5 mL</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+
+      <h2>Cara pakai</h2>
+      <ul>
+        <li>Geser slider atau klik tombol tetes untuk menambah NaOH.</li>
+        <li>Perhatikan warna larutan dan posisi titik pada kurva.</li>
+        <li>Titik ekuivalen tercapai saat mol basa = mol asam (pada 25 mL).</li>
+      </ul>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Bandingkan bentuk kurva asam kuat vs asam lemah — perhatikan "zona buffer" yang datar pada asam lemah.</li>
+        <li>Asam kuat ber-ekuivalen di pH 7, asam lemah di atas 7. Mengapa?</li>
+        <li>Coba indikator metil jingga: apakah cocok untuk titrasi ini?</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const Va = 25, Ca = 0.1, Cb = 0.1;      // mL, M, M
+const na = Ca * Va / 1000;               // mol asam
+const Ka = 1.8e-5, pKa = 4.74, Kw = 1e-14, Kb = Kw / Ka;
+
+let state = { vol: 0, acid: 'strong', ind: 'pp' };
+
+function pHat(vb) {
+  const nb = Cb * vb / 1000;
+  const Vtot = (Va + vb) / 1000; // L
+  let pH;
+  if (state.acid === 'strong') {
+    if (Math.abs(nb - na) < 1e-12) pH = 7;
+    else if (nb < na) pH = -Math.log10((na - nb) / Vtot);
+    else pH = 14 + Math.log10((nb - na) / Vtot);
+  } else {
+    if (nb <= 0) pH = 0.5 * (pKa - Math.log10(Ca));
+    else if (nb < na) pH = pKa + Math.log10(nb / (na - nb));
+    else if (Math.abs(nb - na) < 1e-12) {
+      const Csalt = na / Vtot;
+      const OH = Math.sqrt(Kb * Csalt);
+      pH = 14 + Math.log10(OH);
+    } else pH = 14 + Math.log10((nb - na) / Vtot);
+  }
+  return Math.max(0, Math.min(14, pH));
+}
+
+// indicator colour from pH
+function liquidColor(pH) {
+  if (state.ind === 'pp') {
+    if (pH < 8.2) return 'rgba(225,235,245,0.18)';        // tak berwarna
+    const t = Math.min(1, (pH - 8.2) / 2);
+    return `rgba(${Math.round(214)},${Math.round(40+ (1-t)*60)},${Math.round(120)},${0.45+0.35*t})`; // merah muda → magenta
+  } else { // metil jingga
+    if (pH < 3.1) return 'rgba(214,52,38,0.78)';          // merah
+    if (pH < 4.4) {
+      const t = (pH - 3.1) / 1.3;
+      return `rgba(${Math.round(214+ t*20)},${Math.round(90+ t*90)},40,0.78)`; // merah → oranye
+    }
+    return 'rgba(245,196,32,0.80)';                       // kuning
+  }
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { w, h };
+}
+
+function draw() {
+  const { w, h } = setupDPR();
+  ctx.clearRect(0, 0, w, h);
+  const pH = pHat(state.vol);
+
+  // ---- left: burette + beaker ----
+  const bx = w * 0.18;                 // beaker center x
+  const colW = w * 0.30;
+  // burette
+  ctx.fillStyle = '#3a4654';
+  ctx.fillRect(bx - 6, 10, 12, h * 0.28);
+  ctx.fillStyle = '#7fd1ff';
+  ctx.fillRect(bx - 4, 12, 8, h * 0.28 * (1 - Math.min(1, state.vol / 50)) * 0.9 + 6);
+  // drop
+  if (state.vol > 0 && state.vol < 50) {
+    ctx.fillStyle = '#7fd1ff';
+    const dy = (Date.now() / 6) % (h * 0.12);
+    ctx.beginPath(); ctx.arc(bx, h * 0.28 + 16 + dy, 3.2, 0, 7); ctx.fill();
+  }
+  // beaker
+  const beakerTop = h * 0.44, beakerBot = h * 0.92, beakerH = beakerBot - beakerTop;
+  ctx.strokeStyle = '#9fb0c0'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(bx - colW/2, beakerTop);
+  ctx.lineTo(bx - colW/2, beakerBot);
+  ctx.lineTo(bx + colW/2, beakerBot);
+  ctx.lineTo(bx + colW/2, beakerTop);
+  ctx.stroke();
+  // liquid (level rises a bit with volume)
+  const fill = 0.55 + 0.35 * Math.min(1, state.vol / 50);
+  const liqTop = beakerBot - beakerH * fill;
+  ctx.fillStyle = liquidColor(pH);
+  ctx.fillRect(bx - colW/2 + 2, liqTop, colW - 4, beakerBot - liqTop - 1);
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(bx - colW/2 + 2, liqTop, colW - 4, 6);
+
+  // ---- right: pH curve ----
+  const gx0 = w * 0.42, gy0 = 24, gw = w * 0.54, gh = h - 70;
+  // axes
+  ctx.strokeStyle = '#3a4654'; ctx.lineWidth = 1;
+  ctx.strokeRect(gx0, gy0, gw, gh);
+  ctx.fillStyle = '#9fb0c0'; ctx.font = '11px system-ui';
+  for (let p = 0; p <= 14; p += 2) {
+    const y = gy0 + gh - (p / 14) * gh;
+    ctx.strokeStyle = '#26303c';
+    ctx.beginPath(); ctx.moveTo(gx0, y); ctx.lineTo(gx0 + gw, y); ctx.stroke();
+    ctx.fillText(p, gx0 - 18, y + 4);
+  }
+  ctx.fillText('pH', gx0 - 16, gy0 - 8);
+  for (let v = 0; v <= 50; v += 10) {
+    const x = gx0 + (v / 50) * gw;
+    ctx.fillText(v, x - 6, gy0 + gh + 16);
+  }
+  ctx.fillText('Volume NaOH (mL)', gx0 + gw/2 - 50, gy0 + gh + 30);
+  // pH 7 line
+  const y7 = gy0 + gh - (7 / 14) * gh;
+  ctx.strokeStyle = 'rgba(127,209,255,0.35)'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(gx0, y7); ctx.lineTo(gx0 + gw, y7); ctx.stroke();
+  ctx.setLineDash([]);
+  // curve up to current volume
+  ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  let first = true;
+  for (let v = 0; v <= state.vol + 0.001; v += 0.25) {
+    const x = gx0 + (v / 50) * gw;
+    const y = gy0 + gh - (pHat(v) / 14) * gh;
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // current point
+  const cxp = gx0 + (state.vol / 50) * gw;
+  const cyp = gy0 + gh - (pH / 14) * gh;
+  ctx.fillStyle = '#38bdf8';
+  ctx.beginPath(); ctx.arc(cxp, cyp, 5, 0, 7); ctx.fill();
+  // equivalence marker (25 mL)
+  const xe = gx0 + (25 / 50) * gw;
+  ctx.strokeStyle = 'rgba(251,191,36,0.5)'; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xe, gy0); ctx.lineTo(xe, gy0 + gh); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fbbf24'; ctx.fillText('titik ekuivalen', xe - 30, gy0 + 12);
+}
+
+function sync() {
+  const pH = pHat(state.vol);
+  document.getElementById('rVol').textContent = state.vol.toFixed(2).replace('.', ',');
+  document.getElementById('rPh').textContent = pH.toFixed(1).replace('.', ',');
+  document.getElementById('volLbl').textContent = state.vol.toFixed(1).replace('.', ',') + ' mL';
+  document.getElementById('vol').value = state.vol;
+  const st = pH < 6.5 ? 'Asam' : (pH > 7.5 ? 'Basa' : 'Netral');
+  const el = document.getElementById('rState');
+  el.textContent = st;
+  el.style.color = pH < 6.5 ? '#f87171' : (pH > 7.5 ? '#38bdf8' : '#34d399');
+}
+
+function setVol(v) { state.vol = Math.max(0, Math.min(50, Math.round(v * 4) / 4)); sync(); }
+
+document.getElementById('vol').addEventListener('input', e => setVol(parseFloat(e.target.value)));
+document.getElementById('add1').addEventListener('click', () => setVol(state.vol + 1));
+document.getElementById('add5').addEventListener('click', () => setVol(state.vol + 5));
+document.getElementById('reset').addEventListener('click', () => setVol(0));
+document.getElementById('acid').addEventListener('change', e => { state.acid = e.target.value; sync(); });
+document.getElementById('ind').addEventListener('change', e => { state.ind = e.target.value; });
+
+window.addEventListener('resize', draw);
+sync();
+(function frame(){ draw(); requestAnimationFrame(frame); })();
+</script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laju Reaksi: Teori Tumbukan · HaloChem</title>
+<meta name="description" content="Simulasi teori tumbukan: atur suhu, konsentrasi, dan energi aktivasi, lihat partikel bereaksi.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💥</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Laju Reaksi — Teori Tumbukan</h1>
+  <p class="sim-sub">Reaksi A + B → produk. Tumbukan hanya menghasilkan reaksi bila energinya melebihi energi aktivasi.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Partikel bertumbukan"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Tumbukan efektif/s</div><div class="v" id="rRate">0</div></div>
+        <div class="item"><div class="k">Produk</div><div class="v" id="rProd">0</div></div>
+        <div class="item"><div class="k">Sisa reaktan</div><div class="v" id="rReact">0</div></div>
+      </div>
+
+      <div class="control">
+        <label for="temp">Suhu <span id="tempLbl">300 K</span></label>
+        <input type="range" id="temp" min="150" max="700" step="10" value="300">
+      </div>
+      <div class="control">
+        <label for="conc">Konsentrasi (jumlah partikel) <span id="concLbl">60</span></label>
+        <input type="range" id="conc" min="20" max="140" step="2" value="60">
+      </div>
+      <div class="control">
+        <label for="ea">Energi aktivasi <span id="eaLbl">sedang</span></label>
+        <input type="range" id="ea" min="0" max="100" step="5" value="45">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="reset">Isi ulang reaktan</button>
+      </div>
+
+      <h2>Apa yang terjadi?</h2>
+      <ul>
+        <li><b style="color:#f87171">Merah</b> = zat A, <b style="color:#38bdf8">biru</b> = zat B, <b style="color:#34d399">hijau</b> = produk.</li>
+        <li>Tumbukan berenergi cukup berkedip kuning lalu membentuk produk.</li>
+        <li>Garis di bawah = jumlah reaktan tersisa seiring waktu (kurva laju).</li>
+      </ul>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Naikkan <b>suhu</b> — partikel bergerak lebih cepat, lebih banyak tumbukan melewati energi aktivasi.</li>
+        <li>Naikkan <b>konsentrasi</b> — lebih banyak partikel, peluang tumbuk meningkat.</li>
+        <li>Turunkan <b>energi aktivasi</b> (seperti efek katalis) — reaksi jauh lebih mudah.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const R = 7;                 // radius partikel
+let W = 660, H = 380;       // area partikel (bagian atas), sisanya untuk grafik
+const graphH = 60;
+
+let temp = 300, conc = 60, eaRaw = 45;
+let parts = [];
+let prod = 0;
+let reactEvents = [];       // timestamps tumbukan efektif
+let history = [];           // sisa reaktan vs waktu
+let flashes = [];           // titik kilatan tumbukan
+
+function speedScale() { return 0.9 * Math.sqrt(temp / 300); }
+
+function makeParticle(type) {
+  const ang = Math.random() * Math.PI * 2;
+  const s = (0.8 + Math.random() * 0.6) * 60 * speedScale();
+  return {
+    x: R + Math.random() * (W - 2*R),
+    y: R + Math.random() * (H - 2*R),
+    vx: Math.cos(ang) * s, vy: Math.sin(ang) * s,
+    type
+  };
+}
+
+function init() {
+  parts = [];
+  prod = 0;
+  reactEvents = [];
+  history = [];
+  const n = conc;
+  for (let i = 0; i < n; i++) parts.push(makeParticle(i % 2 === 0 ? 'A' : 'B'));
+}
+
+function rescaleSpeeds() {
+  // jaga arah, set magnitudo sesuai suhu
+  for (const p of parts) {
+    const mag = Math.hypot(p.vx, p.vy) || 1;
+    const target = (0.8 + Math.random() * 0.6) * 60 * speedScale();
+    p.vx = p.vx / mag * target;
+    p.vy = p.vy / mag * target;
+  }
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w * dpr; cv.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = w; H = h - graphH - 16;
+  return { w, h };
+}
+
+let last = performance.now();
+function step(now) {
+  const dt = Math.min(0.04, (now - last) / 1000);
+  last = now;
+  const { w, h } = setupDPR();
+
+  // Ea threshold dalam satuan energi tumbukan
+  const Ea = eaRaw * 6;
+
+  // gerak + pantul
+  for (const p of parts) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.x < R) { p.x = R; p.vx *= -1; }
+    if (p.x > W - R) { p.x = W - R; p.vx *= -1; }
+    if (p.y < R) { p.y = R; p.vy *= -1; }
+    if (p.y > H - R) { p.y = H - R; p.vy *= -1; }
+  }
+
+  // tumbukan
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      const a = parts[i], b = parts[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d2 = dx*dx + dy*dy;
+      if (d2 < (2*R)*(2*R) && d2 > 0) {
+        const d = Math.sqrt(d2);
+        const nx = dx/d, ny = dy/d;
+        // pisahkan & pantulkan (tukar komponen normal)
+        const overlap = 2*R - d;
+        a.x -= nx*overlap/2; a.y -= ny*overlap/2;
+        b.x += nx*overlap/2; b.y += ny*overlap/2;
+        const va = a.vx*nx + a.vy*ny;
+        const vb = b.vx*nx + b.vy*ny;
+        const diff = vb - va;
+        a.vx += diff*nx; a.vy += diff*ny;
+        b.vx -= diff*nx; b.vy -= diff*ny;
+        // reaksi: A + B dengan energi cukup
+        const relSpeed = Math.abs(diff);
+        const collE = 0.5 * relSpeed * relSpeed;
+        const isAB = (a.type==='A'&&b.type==='B')||(a.type==='B'&&b.type==='A');
+        if (isAB && collE > Ea) {
+          a.type = 'C'; b.type = 'C';
+          prod += 2;
+          reactEvents.push(now);
+          flashes.push({ x:(a.x+b.x)/2, y:(a.y+b.y)/2, t: now });
+        }
+      }
+    }
+  }
+
+  // metrik
+  reactEvents = reactEvents.filter(t => now - t < 1000);
+  flashes = flashes.filter(f => now - f.t < 250);
+  const reactRemaining = parts.filter(p => p.type !== 'C').length;
+  if (history.length === 0 || now - history[history.length-1].t > 120) {
+    history.push({ t: now, n: reactRemaining });
+    if (history.length > 260) history.shift();
+  }
+
+  // ---- gambar ----
+  ctx.clearRect(0, 0, w, h);
+  // wadah
+  ctx.strokeStyle = '#2e3a48'; ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, W - 2, H - 2);
+  // partikel
+  for (const p of parts) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, 7);
+    ctx.fillStyle = p.type==='A' ? '#f87171' : p.type==='B' ? '#38bdf8' : '#34d399';
+    ctx.fill();
+  }
+  // kilatan tumbukan efektif
+  for (const f of flashes) {
+    const a = 1 - (now - f.t)/250;
+    ctx.beginPath(); ctx.arc(f.x, f.y, R + 8*(1-a), 0, 7);
+    ctx.strokeStyle = `rgba(251,191,36,${a})`; ctx.lineWidth = 3; ctx.stroke();
+  }
+
+  // ---- grafik sisa reaktan ----
+  const gy = H + 14, gh = graphH;
+  ctx.strokeStyle = '#2e3a48'; ctx.lineWidth = 1;
+  ctx.strokeRect(1, gy, W - 2, gh);
+  ctx.fillStyle = '#9fb0c0'; ctx.font = '10px system-ui';
+  ctx.fillText('sisa reaktan', 8, gy + 13);
+  if (history.length > 1) {
+    const t0 = history[0].t, t1 = history[history.length-1].t;
+    const span = Math.max(1, t1 - t0);
+    ctx.beginPath();
+    history.forEach((p, i) => {
+      const x = 2 + ((p.t - t0)/span) * (W - 4);
+      const y = gy + gh - (p.n / Math.max(conc,1)) * (gh - 6) - 3;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // readout
+  document.getElementById('rRate').textContent = reactEvents.length;
+  document.getElementById('rProd').textContent = prod;
+  document.getElementById('rReact').textContent = reactRemaining;
+
+  requestAnimationFrame(step);
+}
+
+const tempEl = document.getElementById('temp');
+const concEl = document.getElementById('conc');
+const eaEl = document.getElementById('ea');
+tempEl.addEventListener('input', e => {
+  temp = +e.target.value;
+  document.getElementById('tempLbl').textContent = temp + ' K';
+  rescaleSpeeds();
+});
+concEl.addEventListener('input', e => {
+  conc = +e.target.value;
+  document.getElementById('concLbl').textContent = conc;
+  init();
+});
+eaEl.addEventListener('input', e => {
+  eaRaw = +e.target.value;
+  document.getElementById('eaLbl').textContent =
+    eaRaw < 30 ? 'rendah' : eaRaw < 65 ? 'sedang' : 'tinggi';
+});
+document.getElementById('reset').addEventListener('click', init);
+
+init();
+requestAnimationFrame(step);
+</script>
+</body>
+</html>

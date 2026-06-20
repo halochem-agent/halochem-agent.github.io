@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sel Volta (Elektrokimia) · HaloChem</title>
+<meta name="description" content="Simulasi sel volta: pilih dua logam, lihat aliran elektron, reaksi di elektrode, dan potensial sel.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔋</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Sel Volta — Elektrokimia</h1>
+  <p class="sim-sub">Pilih dua logam. Logam dengan potensial reduksi lebih kecil menjadi anode (teroksidasi).</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Diagram sel volta"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item" style="min-width:140px"><div class="k">Potensial sel E°</div><div class="v" id="rE" style="color:#fbbf24">–</div></div>
+        <div class="item"><div class="k">Reaksi</div><div class="v" id="rSpon" style="font-size:1rem">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="m1">Logam 1</label>
+        <select id="m1"></select>
+      </div>
+      <div class="control">
+        <label for="m2">Logam 2</label>
+        <select id="m2"></select>
+      </div>
+
+      <h2>Setengah reaksi</h2>
+      <p id="halfAnode" style="color:#f87171;font-weight:600"></p>
+      <p id="halfCathode" style="color:#38bdf8;font-weight:600"></p>
+      <p id="notation" style="font-family:monospace"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Pasangan Zn–Cu menghasilkan E° ≈ 1,10 V (sel Daniell klasik).</li>
+        <li>Tukar kedua logam — yang lebih reaktif (E° kecil) selalu jadi anode.</li>
+        <li>Cari pasangan dengan E° paling besar.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+// potensial reduksi standar (V) dan muatan ion
+const METALS = {
+  K :{E:-2.92,n:1,col:'#a78bfa'}, Ca:{E:-2.87,n:2,col:'#c084fc'},
+  Na:{E:-2.71,n:1,col:'#f0abfc'}, Mg:{E:-2.37,n:2,col:'#cbd5e1'},
+  Al:{E:-1.66,n:3,col:'#94a3b8'}, Zn:{E:-0.76,n:2,col:'#9ca3af'},
+  Fe:{E:-0.44,n:2,col:'#a16207'}, Pb:{E:-0.13,n:2,col:'#64748b'},
+  Cu:{E: 0.34,n:2,col:'#fb923c'}, Ag:{E: 0.80,n:1,col:'#e2e8f0'},
+  Au:{E: 1.50,n:3,col:'#fbbf24'}
+};
+const order = Object.keys(METALS);
+
+let m1 = 'Zn', m2 = 'Cu';
+let flow = 0;
+
+function fill(sel, val){
+  const s = document.getElementById(sel);
+  order.forEach(k=>{
+    const o = document.createElement('option');
+    o.value = k; o.textContent = `${k}  (E° = ${METALS[k].E>=0?'+':''}${METALS[k].E.toFixed(2)} V)`;
+    if (k===val) o.selected = true;
+    s.appendChild(o);
+  });
+}
+fill('m1', m1); fill('m2', m2);
+
+function roles(){
+  // anode = E lebih kecil (mudah teroksidasi)
+  let anode = m1, cathode = m2;
+  if (METALS[m1].E > METALS[m2].E) { anode = m2; cathode = m1; }
+  return { anode, cathode };
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const { anode, cathode } = roles();
+  const Ecell = METALS[cathode].E - METALS[anode].E;
+  const same = m1 === m2;
+
+  // beaker positions: anode left, cathode right
+  const bw = w*0.26, bh = h*0.42, by = h*0.40;
+  const axc = w*0.24, cxc = w*0.76;
+  const wireY = h*0.16;
+
+  // wire
+  ctx.strokeStyle = '#9fb0c0'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(axc, by); ctx.lineTo(axc, wireY);
+  ctx.lineTo(cxc, wireY); ctx.lineTo(cxc, by);
+  ctx.stroke();
+
+  // voltmeter
+  ctx.fillStyle = '#232c38'; ctx.strokeStyle='#475569';
+  const vmx = w/2, vmy = wireY;
+  ctx.beginPath(); ctx.arc(vmx, vmy, 26, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = same ? '#9fb0c0' : '#fbbf24'; ctx.font='bold 13px system-ui'; ctx.textAlign='center';
+  ctx.fillText(same ? '0.00' : Ecell.toFixed(2), vmx, vmy-2);
+  ctx.font='9px system-ui'; ctx.fillStyle='#9fb0c0'; ctx.fillText('Volt', vmx, vmy+12);
+
+  // electrons flow anode -> cathode (sepanjang kawat) bila spontan
+  if (!same && Ecell > 0) {
+    flow += 0.012;
+    const pts = [];
+    const L1 = by - wireY, L2 = cxc - axc, L3 = by - wireY;
+    const total = L1 + L2 + L3;
+    for (let i=0;i<10;i++){
+      let d = ((flow + i/10) % 1) * total;
+      let x,y;
+      if (d < L1){ x = axc; y = by - d; }
+      else if (d < L1+L2){ x = axc + (d-L1); y = wireY; }
+      else { x = cxc; y = wireY + (d-L1-L2); }
+      pts.push({x,y});
+    }
+    pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,3.2,0,7); ctx.fillStyle='#fde047'; ctx.fill(); });
+  }
+
+  // beakers + electrodes
+  function beaker(xc, metal, isAnode){
+    ctx.strokeStyle = '#9fb0c0'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xc-bw/2, by); ctx.lineTo(xc-bw/2, by+bh);
+    ctx.lineTo(xc+bw/2, by+bh); ctx.lineTo(xc+bw/2, by); ctx.stroke();
+    // larutan
+    ctx.fillStyle = 'rgba(56,189,248,0.12)';
+    ctx.fillRect(xc-bw/2+2, by+bh*0.28, bw-4, bh*0.72-2);
+    // elektrode
+    ctx.fillStyle = METALS[metal].col;
+    ctx.fillRect(xc-8, by-6, 16, bh*0.72);
+    // label
+    ctx.fillStyle = '#e6edf3'; ctx.font='bold 14px system-ui'; ctx.textAlign='center';
+    ctx.fillText(metal, xc, by+bh+20);
+    ctx.font='11px system-ui'; ctx.fillStyle = isAnode ? '#f87171' : '#38bdf8';
+    ctx.fillText(isAnode?'ANODE (−)':'KATODE (+)', xc, by+bh+36);
+  }
+  beaker(axc, anode, true);
+  beaker(cxc, cathode, false);
+
+  // jembatan garam
+  ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 8; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(axc+bw/2-6, by+bh*0.35);
+  ctx.quadraticCurveTo(w/2, by-4, cxc-bw/2+6, by+bh*0.35);
+  ctx.stroke(); ctx.lineCap='butt';
+  ctx.fillStyle='#9fb0c0'; ctx.font='10px system-ui'; ctx.textAlign='center';
+  ctx.fillText('jembatan garam', w/2, by-12);
+
+  // teks
+  ctx.textAlign='start';
+
+  // readout & half reactions
+  document.getElementById('rE').textContent = same ? '0.00 V' : (Ecell>=0?'+':'') + Ecell.toFixed(2) + ' V';
+  const sp = document.getElementById('rSpon');
+  if (same){ sp.textContent='—'; sp.style.color='#9fb0c0'; }
+  else if (Ecell>0){ sp.textContent='spontan'; sp.style.color='#34d399'; }
+  else { sp.textContent='tidak spontan'; sp.style.color='#f87171'; }
+
+  const na = METALS[anode].n, nc = METALS[cathode].n;
+  document.getElementById('halfAnode').textContent =
+    same ? '' : `Anode (oksidasi): ${anode} → ${anode}${supp(na)} + ${na}e⁻`;
+  document.getElementById('halfCathode').textContent =
+    same ? '' : `Katode (reduksi): ${cathode}${supp(nc)} + ${nc}e⁻ → ${cathode}`;
+  document.getElementById('notation').textContent =
+    same ? 'Pilih dua logam berbeda.' : `${anode} | ${anode}${supp(na)} || ${cathode}${supp(nc)} | ${cathode}`;
+
+  requestAnimationFrame(draw);
+}
+function supp(n){ return n>1 ? n+'⁺' : '⁺'; }
+
+document.getElementById('m1').addEventListener('change', e=>{ m1=e.target.value; });
+document.getElementById('m2').addEventListener('change', e=>{ m2=e.target.value; });
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

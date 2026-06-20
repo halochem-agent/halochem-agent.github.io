@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bentuk Molekul (VSEPR) · HaloChem</title>
+<meta name="description" content="Simulasi bentuk molekul VSEPR 3D: pilih molekul, lihat geometri dan sudut ikatan.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Bentuk Molekul — Teori VSEPR</h1>
+  <p class="sim-sub">Pasangan elektron saling menjauh sejauh mungkin. Geometri ditentukan oleh jumlah pasangan ikatan & pasangan bebas.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Model 3D molekul"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item" style="min-width:150px"><div class="k">Bentuk</div><div class="v" id="rShape" style="font-size:1.1rem">–</div></div>
+        <div class="item"><div class="k">Sudut ikatan</div><div class="v" id="rAngle" style="color:#fbbf24;font-size:1.1rem">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="mol">Molekul</label>
+        <select id="mol"></select>
+      </div>
+      <div class="control">
+        <label><input type="checkbox" id="spin" checked> Putar otomatis</label>
+      </div>
+      <p style="color:#9fb0c0;font-size:0.9rem">Seret kursor pada gambar untuk memutar molekul secara manual.</p>
+
+      <h2>Keterangan</h2>
+      <ul>
+        <li>Bola tengah = atom pusat, bola luar = atom yang terikat.</li>
+        <li>Lobus <b style="color:#a78bfa">ungu</b> = pasangan elektron bebas (menekan sudut ikatan).</li>
+        <li id="domInfo"></li>
+      </ul>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Bandingkan CH₄, NH₃, dan H₂O — sterik sama (4) tapi sudut mengecil karena pasangan bebas bertambah.</li>
+        <li>Lihat PCl₅ (bipiramida trigonal) dan SF₆ (oktahedral).</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const PRESETS = {
+  'CO₂ — Linear':            {c:'C', l:'O', steric:2, lone:0, shape:'Linear', angle:'180°'},
+  'BeCl₂ — Linear':          {c:'Be',l:'Cl',steric:2, lone:0, shape:'Linear', angle:'180°'},
+  'BF₃ — Trigonal planar':   {c:'B', l:'F', steric:3, lone:0, shape:'Trigonal planar', angle:'120°'},
+  'SO₂ — Bengkok':           {c:'S', l:'O', steric:3, lone:1, shape:'Bengkok (V)', angle:'≈119°'},
+  'CH₄ — Tetrahedral':       {c:'C', l:'H', steric:4, lone:0, shape:'Tetrahedral', angle:'109,5°'},
+  'NH₃ — Piramida trigonal': {c:'N', l:'H', steric:4, lone:1, shape:'Piramida trigonal', angle:'≈107°'},
+  'H₂O — Bengkok':           {c:'O', l:'H', steric:4, lone:2, shape:'Bengkok', angle:'≈104,5°'},
+  'PCl₅ — Bipiramida trigonal':{c:'P',l:'Cl',steric:5, lone:0, shape:'Bipiramida trigonal', angle:'120° & 90°'},
+  'SF₆ — Oktahedral':        {c:'S', l:'F', steric:6, lone:0, shape:'Oktahedral', angle:'90°'}
+};
+
+let key = 'CH₄ — Tetrahedral';
+let yaw = 0.6, pitch = -0.35, spin = true;
+let dragging = false, lastX, lastY;
+
+const selMol = document.getElementById('mol');
+Object.keys(PRESETS).forEach(k=>{
+  const o=document.createElement('option'); o.value=k; o.textContent=k;
+  if(k===key)o.selected=true; selMol.appendChild(o);
+});
+
+function geometryDirs(steric){
+  if (steric===2) return [[0,0,1],[0,0,-1]];
+  if (steric===3){ const a=[]; for(let i=0;i<3;i++){const t=Math.PI/2+i*2*Math.PI/3; a.push([Math.cos(t),0,Math.sin(t)]);} return a; }
+  if (steric===4){ const s=1/Math.sqrt(3); return [[s,s,s],[s,-s,-s],[-s,s,-s],[-s,-s,s]]; }
+  if (steric===5){ const eq=[]; for(let i=0;i<3;i++){const t=Math.PI/2+i*2*Math.PI/3; eq.push([Math.cos(t),0,Math.sin(t)]);} return [[0,1,0],[0,-1,0],...eq]; }
+  return [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+}
+
+function rot(v){
+  let [x,y,z]=v;
+  // yaw around Y
+  let x1 = x*Math.cos(yaw)+z*Math.sin(yaw);
+  let z1 = -x*Math.sin(yaw)+z*Math.cos(yaw);
+  // pitch around X
+  let y2 = y*Math.cos(pitch)-z1*Math.sin(pitch);
+  let z2 = y*Math.sin(pitch)+z1*Math.cos(pitch);
+  return [x1,y2,z2];
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+const ATOMCOL = {C:'#475569',O:'#ef4444',H:'#e2e8f0',N:'#3b82f6',B:'#fbbf24',Be:'#84cc16',F:'#a3e635',Cl:'#22c55e',S:'#eab308',P:'#fb923c'};
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  if (spin) yaw += 0.012;
+  const p = PRESETS[key];
+  const dirs = geometryDirs(p.steric);
+  const loneDirs = dirs.slice(0, p.lone);
+  const bondDirs = dirs.slice(p.lone);
+
+  const cx = w/2, cy = h/2, Rlen = Math.min(w,h)*0.30, f = 4;
+  function proj(v){
+    const r = rot(v);
+    const scale = f/(f - r[2]*0.0);   // ortho-ish; keep stable
+    return { x: cx + r[0]*Rlen, y: cy - r[1]*Rlen, z: r[2] };
+  }
+
+  // build draw list
+  const items = [];
+  const center = proj([0,0,0]); center.z = 0;
+  // bonds + ligands
+  bondDirs.forEach(d=>{
+    const pos = proj(d);
+    items.push({type:'bond', a:center, b:pos, z:(pos.z-0.01)});
+    items.push({type:'atom', x:pos.x, y:pos.y, z:pos.z, col:ATOMCOL[p.l]||'#94a3b8', r:16, label:p.l});
+  });
+  // lone pairs
+  loneDirs.forEach(d=>{
+    const pos = proj([d[0]*0.7,d[1]*0.7,d[2]*0.7]);
+    items.push({type:'lone', x:pos.x, y:pos.y, z:pos.z});
+  });
+  // central atom
+  items.push({type:'atom', x:center.x, y:center.y, z:0.0, col:ATOMCOL[p.c]||'#64748b', r:22, label:p.c, central:true});
+
+  items.sort((a,b)=> (a.z) - (b.z));
+
+  for (const it of items){
+    if (it.type==='bond'){
+      ctx.strokeStyle='#64748b'; ctx.lineWidth=7; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(it.a.x,it.a.y); ctx.lineTo(it.b.x,it.b.y); ctx.stroke();
+      ctx.lineCap='butt';
+    } else if (it.type==='lone'){
+      ctx.beginPath(); ctx.ellipse(it.x,it.y,16,10, Math.atan2(it.y-cy,it.x-cx),0,7);
+      ctx.fillStyle='rgba(167,139,250,0.55)'; ctx.fill();
+    } else {
+      const shade = 0.7 + 0.3*((it.z+1)/2);
+      ctx.beginPath(); ctx.arc(it.x,it.y,it.r,0,7);
+      ctx.fillStyle = it.col; ctx.globalAlpha = shade; ctx.fill(); ctx.globalAlpha=1;
+      ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle = (it.label==='H'||it.label==='F'||it.label==='Cl') ? '#0b0f14' : '#fff';
+      ctx.font=`bold ${it.central?14:12}px system-ui`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(it.label, it.x, it.y);
+      ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+    }
+  }
+
+  document.getElementById('rShape').textContent = p.shape;
+  document.getElementById('rAngle').textContent = p.angle;
+  document.getElementById('domInfo').textContent =
+    `Sterik ${p.steric}: ${p.steric-p.lone} pasangan ikatan + ${p.lone} pasangan bebas.`;
+
+  requestAnimationFrame(draw);
+}
+
+selMol.addEventListener('change', e=> key=e.target.value);
+document.getElementById('spin').addEventListener('change', e=> spin=e.target.checked);
+cv.addEventListener('pointerdown', e=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('pointerup', ()=> dragging=false);
+window.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  yaw += (e.clientX-lastX)*0.01; pitch += (e.clientY-lastY)*0.01;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+  lastX=e.clientX; lastY=e.clientY;
+});
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

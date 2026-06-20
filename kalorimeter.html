@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalorimeter Virtual (Termokimia) · HaloChem</title>
+<meta name="description" content="Simulasi kalorimeter: ukur perubahan suhu, hitung q = m·c·ΔT dan entalpi reaksi ΔH.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌡️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Kalorimeter Virtual — Termokimia</h1>
+  <p class="sim-sub">Larutkan/reaksikan zat dalam air, amati perubahan suhu, lalu hitung q = m·c·ΔT dan ΔH reaksi.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Kalorimeter dan termometer"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">ΔT</div><div class="v" id="rdT">–</div></div>
+        <div class="item"><div class="k">q (kalor)</div><div class="v" id="rQ" style="color:#fbbf24">–</div></div>
+        <div class="item"><div class="k">ΔH hitung</div><div class="v" id="rH" style="color:#34d399">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="proc">Proses</label>
+        <select id="proc"></select>
+      </div>
+      <div class="control">
+        <label>Massa air <span id="mLab">100 g</span></label>
+        <input type="range" id="mass" min="50" max="300" step="10" value="100">
+      </div>
+      <div class="control">
+        <label>Jumlah zat <span id="nLab">0,5 mol</span></label>
+        <input type="range" id="mol" min="0.1" max="2" step="0.1" value="0.5">
+      </div>
+
+      <div class="btn-row"><button class="btn" id="run">▶ Campurkan</button></div>
+
+      <h2>Perhitungan</h2>
+      <p id="calc" style="color:#9fb0c0;font-size:0.9rem;font-family:monospace"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Reaksi <b style="color:#f87171">eksoterm</b> menaikkan suhu (melepas kalor), <b style="color:#38bdf8">endoterm</b> menurunkannya.</li>
+        <li>Perbesar massa air → ΔT mengecil, tapi ΔH per mol tetap sama. Mengapa?</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · c air = 4,18 J/g°C · kapasitas kalorimeter diabaikan</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const C = 4.18, T0 = 25;
+
+const PROC = {
+  'Pelarutan NaOH (eksoterm)':       {dH:-44.5},
+  'Netralisasi HCl + NaOH (eksoterm)':{dH:-57.1},
+  'Pelarutan CaCl₂ (eksoterm)':      {dH:-82.8},
+  'Pelarutan NH₄NO₃ (endoterm)':     {dH:+25.7},
+  'Pelarutan KNO₃ (endoterm)':       {dH:+34.9}
+};
+let key = 'Pelarutan NaOH (eksoterm)';
+let mass = 100, mol = 0.5;
+let curT = T0, targetT = T0;
+
+const sel = document.getElementById('proc');
+Object.keys(PROC).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+
+function results(){
+  const dH = PROC[key].dH;             // kJ/mol
+  const q_water = -dH * 1000 * mol;    // J yang diserap air (eksoterm dH<0 -> q>0 -> air panas)
+  const dT = q_water / (mass * C);
+  const Tf = T0 + dT;
+  const q_meas = mass * C * dT;        // J (q = m c ΔT)
+  const dH_calc = -q_meas / (mol*1000);// kJ/mol
+  return { dH, q_water, dT, Tf, q_meas, dH_calc };
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  curT += (targetT - curT) * 0.06;
+
+  // ---- kalorimeter (cangkir) di kiri ----
+  const cupX = w*0.28, cupW = w*0.32, cupTop = h*0.30, cupBot = h*0.88;
+  ctx.strokeStyle = '#9fb0c0'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cupX-cupW/2, cupTop); ctx.lineTo(cupX-cupW/2, cupBot);
+  ctx.lineTo(cupX+cupW/2, cupBot); ctx.lineTo(cupX+cupW/2, cupTop); ctx.stroke();
+  // tutup
+  ctx.fillStyle = '#3a4654'; ctx.fillRect(cupX-cupW/2-8, cupTop-10, cupW+16, 12);
+  // air (warna bergeser merah saat panas, biru saat dingin)
+  const warm = Math.max(-1, Math.min(1, (curT - T0)/20));
+  const r = 56 + warm*120, g = 120 - Math.abs(warm)*40, b = 200 - warm*120;
+  ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},0.45)`;
+  ctx.fillRect(cupX-cupW/2+3, cupTop+30, cupW-6, cupBot-cupTop-32);
+
+  // ---- termometer di kanan cangkir ----
+  const tx = cupX + cupW/2 - 14;
+  const tTop = cupTop-4, tBot = cupBot-20;
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(tx, tTop); ctx.lineTo(tx, tBot); ctx.stroke();
+  ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.arc(tx, tBot+6, 9, 0, 7); ctx.fill();
+  // kolom (skala 0..60 C)
+  const frac = Math.max(0, Math.min(1, curT/60));
+  ctx.strokeStyle='#ef4444'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(tx, tBot); ctx.lineTo(tx, tBot - frac*(tBot-tTop)); ctx.stroke();
+  ctx.lineCap='butt';
+
+  // ---- panel angka besar suhu ----
+  ctx.fillStyle = '#e6edf3'; ctx.font='bold 34px system-ui'; ctx.textAlign='center';
+  ctx.fillText(curT.toFixed(1).replace('.',',')+' °C', w*0.74, h*0.40);
+  ctx.font='13px system-ui'; ctx.fillStyle='#9fb0c0';
+  ctx.fillText('suhu campuran (awal 25,0 °C)', w*0.74, h*0.40+22);
+  // panah eksoterm/endoterm
+  const dH = PROC[key].dH;
+  ctx.font='bold 14px system-ui';
+  ctx.fillStyle = dH<0 ? '#f87171' : '#38bdf8';
+  ctx.fillText(dH<0 ? 'EKSOTERM  (melepas kalor)' : 'ENDOTERM  (menyerap kalor)', w*0.74, h*0.55);
+  ctx.textAlign='left';
+
+  requestAnimationFrame(draw);
+}
+
+function update(){
+  const R = results();
+  targetT = R.Tf;
+  document.getElementById('rdT').textContent = (R.dT>=0?'+':'') + R.dT.toFixed(1).replace('.',',') + ' °C';
+  document.getElementById('rQ').textContent = (R.q_meas/1000).toFixed(1).replace('.',',') + ' kJ';
+  document.getElementById('rH').textContent = (R.dH_calc>=0?'+':'') + R.dH_calc.toFixed(1).replace('.',',') + ' kJ/mol';
+  document.getElementById('calc').innerHTML =
+    `q = m·c·ΔT = ${mass} × 4,18 × ${R.dT.toFixed(1).replace('.',',')}<br>` +
+    `&nbsp;&nbsp;= ${(R.q_meas/1000).toFixed(1).replace('.',',')} kJ<br>` +
+    `ΔH = −q / n = ${(R.dH_calc).toFixed(1).replace('.',',')} kJ/mol`;
+}
+
+sel.addEventListener('change', e=>{ key=e.target.value; curT=T0; targetT=T0; update(); });
+document.getElementById('mass').addEventListener('input', e=>{ mass=+e.target.value; document.getElementById('mLab').textContent=mass+' g'; update(); });
+document.getElementById('mol').addEventListener('input', e=>{ mol=+e.target.value; document.getElementById('nLab').textContent=mol.toFixed(1).replace('.',',')+' mol'; update(); });
+document.getElementById('run').addEventListener('click', ()=>{ curT=T0; update(); });
+
+update();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

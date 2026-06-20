@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stoikiometri & Pereaksi Pembatas · HaloChem</title>
+<meta name="description" content="Simulasi pereaksi pembatas: atur mol pereaksi, hitung produk dan sisa dengan diagram batang.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚗️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Stoikiometri — Pereaksi Pembatas</h1>
+  <p class="sim-sub">Atur jumlah mol pereaksi. Pereaksi yang habis lebih dulu membatasi jumlah produk.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Diagram batang sebelum dan sesudah reaksi"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item" style="min-width:150px"><div class="k">Pereaksi pembatas</div><div class="v" id="rLim" style="color:#f87171;font-size:1.2rem">–</div></div>
+        <div class="item"><div class="k">Produk terbentuk</div><div class="v" id="rProd" style="color:#34d399">–</div></div>
+      </div>
+
+      <div class="control">
+        <label for="rxn">Reaksi</label>
+        <select id="rxn"></select>
+      </div>
+      <div class="control">
+        <label>Mol <span id="n1lab">H₂</span> <span id="n1val">4,0 mol</span></label>
+        <input type="range" id="n1" min="0" max="10" step="0.5" value="4">
+      </div>
+      <div class="control">
+        <label>Mol <span id="n2lab">O₂</span> <span id="n2val">1,0 mol</span></label>
+        <input type="range" id="n2" min="0" max="10" step="0.5" value="1">
+      </div>
+
+      <h2>Hasil</h2>
+      <p id="summary" style="color:#9fb0c0;font-size:0.92rem"></p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li>Atur agar tepat habis bereaksi (tidak ada sisa) — itulah perbandingan stoikiometri.</li>
+        <li>Tambahkan satu pereaksi berlebih — perhatikan produk tidak bertambah setelah pereaksi lain habis.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const RXN = {
+  '2 H₂ + O₂ → 2 H₂O':        {r1:'H₂',a:2, r2:'O₂',b:1, p:'H₂O',c:2},
+  'N₂ + 3 H₂ → 2 NH₃':        {r1:'N₂',a:1, r2:'H₂',b:3, p:'NH₃',c:2},
+  '2 Na + Cl₂ → 2 NaCl':      {r1:'Na',a:2, r2:'Cl₂',b:1, p:'NaCl',c:2},
+  '2 Mg + O₂ → 2 MgO':        {r1:'Mg',a:2, r2:'O₂',b:1, p:'MgO',c:2},
+  'C + O₂ → CO₂':             {r1:'C', a:1, r2:'O₂',b:1, p:'CO₂',c:1}
+};
+let key = '2 H₂ + O₂ → 2 H₂O';
+let n1 = 4, n2 = 1;
+
+const selR = document.getElementById('rxn');
+Object.keys(RXN).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; selR.appendChild(o); });
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function compute(){
+  const x = RXN[key];
+  const ext = Math.min(n1/x.a, n2/x.b);     // tingkat reaksi
+  const prod = ext * x.c;
+  const left1 = n1 - ext*x.a;
+  const left2 = n2 - ext*x.b;
+  let lim;
+  if (n1===0 || n2===0) lim = '—';
+  else if (Math.abs(n1/x.a - n2/x.b) < 1e-9) lim = 'tepat habis';
+  else lim = (n1/x.a < n2/x.b) ? x.r1 : x.r2;
+  return { x, ext, prod, left1, left2, lim };
+}
+
+function bar(x, y, w, h, val, maxV, color, label){
+  const bh = maxV>0 ? (val/maxV)*h : 0;
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y+h-bh, w, bh);
+  ctx.fillStyle = '#9fb0c0'; ctx.font='12px system-ui'; ctx.textAlign='center';
+  ctx.fillText(label, x+w/2, y+h+16);
+  ctx.fillStyle = '#e6edf3'; ctx.font='bold 11px system-ui';
+  if (val>0.001) ctx.fillText(val.toFixed(1), x+w/2, y+h-bh-6);
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const { x, prod, left1, left2, lim } = compute();
+  const maxV = Math.max(2, n1, n2, prod, left1, left2);
+  const top = 50, gh = h-110, bw = w*0.10;
+
+  ctx.fillStyle = '#e6edf3'; ctx.font='bold 13px system-ui'; ctx.textAlign='left';
+  ctx.fillText('SEBELUM', w*0.06, 28);
+  ctx.fillText('SESUDAH', w*0.56, 28);
+  ctx.strokeStyle='#2e3a48'; ctx.beginPath(); ctx.moveTo(w*0.5,40); ctx.lineTo(w*0.5,h-40); ctx.stroke();
+
+  // sebelum: R1, R2
+  bar(w*0.10, top, bw, gh, n1, maxV, '#f87171', x.r1);
+  bar(w*0.26, top, bw, gh, n2, maxV, '#38bdf8', x.r2);
+  // sesudah: sisa R1, sisa R2, produk
+  bar(w*0.56, top, bw, gh, left1, maxV, 'rgba(248,113,113,0.55)', 'sisa '+x.r1);
+  bar(w*0.70, top, bw, gh, left2, maxV, 'rgba(56,189,248,0.55)', 'sisa '+x.r2);
+  bar(w*0.84, top, bw, gh, prod, maxV, '#34d399', x.p);
+
+  ctx.textAlign='left';
+  // readout
+  document.getElementById('rLim').textContent = lim;
+  document.getElementById('rProd').textContent = prod.toFixed(1)+' mol';
+  document.getElementById('summary').innerHTML =
+    `Terbentuk <b>${prod.toFixed(1)} mol ${x.p}</b>. ` +
+    (left1>0.001? `Sisa ${left1.toFixed(1)} mol ${x.r1}. ` : '') +
+    (left2>0.001? `Sisa ${left2.toFixed(1)} mol ${x.r2}. ` : '') +
+    (left1<=0.001 && left2<=0.001 ? 'Kedua pereaksi habis tepat.' : '');
+
+  requestAnimationFrame(draw);
+}
+
+function setLabels(){
+  const x = RXN[key];
+  document.getElementById('n1lab').textContent = x.r1;
+  document.getElementById('n2lab').textContent = x.r2;
+}
+selR.addEventListener('change', e=>{ key=e.target.value; setLabels(); });
+document.getElementById('n1').addEventListener('input', e=>{ n1=+e.target.value; document.getElementById('n1val').textContent=n1.toFixed(1).replace('.',',')+' mol'; });
+document.getElementById('n2').addEventListener('input', e=>{ n2=+e.target.value; document.getElementById('n2val').textContent=n2.toFixed(1).replace('.',',')+' mol'; });
+
+setLabels();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

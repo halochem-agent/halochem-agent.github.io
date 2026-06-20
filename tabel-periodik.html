@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabel Periodik Interaktif · HaloChem</title>
+<meta name="description" content="Tabel periodik unsur interaktif: warnai berdasarkan golongan, wujud, atau periode; klik unsur untuk detail.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+<link rel="stylesheet" href="style.css">
+<style>
+  .pt-wrap { overflow-x: auto; padding-bottom: 8px; }
+  .pt {
+    display: grid;
+    grid-template-columns: repeat(18, minmax(34px, 1fr));
+    gap: 3px; min-width: 660px;
+  }
+  .cell {
+    aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; color: #0b0f14; transition: transform .08s; user-select: none;
+    line-height: 1;
+  }
+  .cell:hover { transform: scale(1.12); z-index: 3; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
+  .cell .z { font-size: 0.5rem; opacity: 0.8; }
+  .cell .s { font-size: 0.82rem; font-weight: 800; }
+  .marker { background: transparent !important; border: 1px dashed var(--border); color: var(--text-dim); cursor: default; font-size: 0.55rem; }
+  .marker:hover { transform: none; box-shadow: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+  .legend span { font-size: 0.74rem; padding: 3px 9px; border-radius: 999px; color: #0b0f14; font-weight: 600; }
+  .scheme { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  #detail .v { font-size: 1.05rem; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Tabel Periodik Interaktif</h1>
+  <p class="sim-sub">118 unsur. Pilih skema warna, lalu klik unsur untuk melihat detailnya.</p>
+
+  <div class="scheme">
+    <button class="btn" data-sch="cat">Warnai: Golongan/Kategori</button>
+    <button class="btn ghost" data-sch="state">Warnai: Wujud (25°C)</button>
+    <button class="btn ghost" data-sch="period">Warnai: Periode</button>
+  </div>
+
+  <div class="panel" id="detail" style="margin-bottom:16px">
+    <div class="readout">
+      <div class="item" style="min-width:60px"><div class="k">No</div><div class="v" id="dZ">–</div></div>
+      <div class="item" style="min-width:60px"><div class="k">Lambang</div><div class="v" id="dS">–</div></div>
+      <div class="item" style="min-width:120px"><div class="k">Nama</div><div class="v" id="dN">Klik sebuah unsur</div></div>
+      <div class="item" style="min-width:120px"><div class="k">Kategori</div><div class="v" id="dC" style="font-size:0.95rem">–</div></div>
+      <div class="item" style="min-width:70px"><div class="k">Periode</div><div class="v" id="dP">–</div></div>
+      <div class="item" style="min-width:70px"><div class="k">Wujud</div><div class="v" id="dSt" style="font-size:0.95rem">–</div></div>
+    </div>
+  </div>
+
+  <div class="pt-wrap"><div class="pt" id="pt"></div></div>
+  <div class="legend" id="legend"></div>
+</main>
+
+<footer><div class="wrap">HaloChem · data unsur untuk pembelajaran</div></footer>
+
+<script>
+// kategori & warna
+const CAT = {
+  alkali:{n:'Logam alkali',col:'#f87171'},
+  alkaline:{n:'Logam alkali tanah',col:'#fb923c'},
+  transition:{n:'Logam transisi',col:'#fbbf24'},
+  post:{n:'Logam pasca-transisi',col:'#a3e635'},
+  metalloid:{n:'Metaloid',col:'#34d399'},
+  nonmetal:{n:'Nonlogam',col:'#38bdf8'},
+  halogen:{n:'Halogen',col:'#818cf8'},
+  noble:{n:'Gas mulia',col:'#c084fc'},
+  lanthanide:{n:'Lantanida',col:'#f472b6'},
+  actinide:{n:'Aktinida',col:'#fb7185'}
+};
+const STATE = { gas:{n:'Gas',col:'#7dd3fc'}, liquid:{n:'Cair',col:'#fca5a5'}, solid:{n:'Padat',col:'#cbd5e1'} };
+const PERIODCOL = ['#f87171','#fb923c','#fbbf24','#a3e635','#34d399','#38bdf8','#c084fc'];
+
+// data unsur: sym -> {z,name,cat,state}
+const EL = {
+H:{z:1,n:'Hidrogen',c:'nonmetal',st:'gas'}, He:{z:2,n:'Helium',c:'noble',st:'gas'},
+Li:{z:3,n:'Litium',c:'alkali',st:'solid'}, Be:{z:4,n:'Berilium',c:'alkaline',st:'solid'},
+B:{z:5,n:'Boron',c:'metalloid',st:'solid'}, C:{z:6,n:'Karbon',c:'nonmetal',st:'solid'},
+N:{z:7,n:'Nitrogen',c:'nonmetal',st:'gas'}, O:{z:8,n:'Oksigen',c:'nonmetal',st:'gas'},
+F:{z:9,n:'Fluorin',c:'halogen',st:'gas'}, Ne:{z:10,n:'Neon',c:'noble',st:'gas'},
+Na:{z:11,n:'Natrium',c:'alkali',st:'solid'}, Mg:{z:12,n:'Magnesium',c:'alkaline',st:'solid'},
+Al:{z:13,n:'Aluminium',c:'post',st:'solid'}, Si:{z:14,n:'Silikon',c:'metalloid',st:'solid'},
+P:{z:15,n:'Fosforus',c:'nonmetal',st:'solid'}, S:{z:16,n:'Belerang',c:'nonmetal',st:'solid'},
+Cl:{z:17,n:'Klorin',c:'halogen',st:'gas'}, Ar:{z:18,n:'Argon',c:'noble',st:'gas'},
+K:{z:19,n:'Kalium',c:'alkali',st:'solid'}, Ca:{z:20,n:'Kalsium',c:'alkaline',st:'solid'},
+Sc:{z:21,n:'Skandium',c:'transition',st:'solid'}, Ti:{z:22,n:'Titanium',c:'transition',st:'solid'},
+V:{z:23,n:'Vanadium',c:'transition',st:'solid'}, Cr:{z:24,n:'Kromium',c:'transition',st:'solid'},
+Mn:{z:25,n:'Mangan',c:'transition',st:'solid'}, Fe:{z:26,n:'Besi',c:'transition',st:'solid'},
+Co:{z:27,n:'Kobalt',c:'transition',st:'solid'}, Ni:{z:28,n:'Nikel',c:'transition',st:'solid'},
+Cu:{z:29,n:'Tembaga',c:'transition',st:'solid'}, Zn:{z:30,n:'Seng',c:'transition',st:'solid'},
+Ga:{z:31,n:'Galium',c:'post',st:'solid'}, Ge:{z:32,n:'Germanium',c:'metalloid',st:'solid'},
+As:{z:33,n:'Arsen',c:'metalloid',st:'solid'}, Se:{z:34,n:'Selenium',c:'nonmetal',st:'solid'},
+Br:{z:35,n:'Bromin',c:'halogen',st:'liquid'}, Kr:{z:36,n:'Kripton',c:'noble',st:'gas'},
+Rb:{z:37,n:'Rubidium',c:'alkali',st:'solid'}, Sr:{z:38,n:'Stronsium',c:'alkaline',st:'solid'},
+Y:{z:39,n:'Itrium',c:'transition',st:'solid'}, Zr:{z:40,n:'Zirkonium',c:'transition',st:'solid'},
+Nb:{z:41,n:'Niobium',c:'transition',st:'solid'}, Mo:{z:42,n:'Molibdenum',c:'transition',st:'solid'},
+Tc:{z:43,n:'Teknesium',c:'transition',st:'solid'}, Ru:{z:44,n:'Rutenium',c:'transition',st:'solid'},
+Rh:{z:45,n:'Rodium',c:'transition',st:'solid'}, Pd:{z:46,n:'Paladium',c:'transition',st:'solid'},
+Ag:{z:47,n:'Perak',c:'transition',st:'solid'}, Cd:{z:48,n:'Kadmium',c:'transition',st:'solid'},
+In:{z:49,n:'Indium',c:'post',st:'solid'}, Sn:{z:50,n:'Timah',c:'post',st:'solid'},
+Sb:{z:51,n:'Antimon',c:'metalloid',st:'solid'}, Te:{z:52,n:'Telurium',c:'metalloid',st:'solid'},
+I:{z:53,n:'Iodin',c:'halogen',st:'solid'}, Xe:{z:54,n:'Xenon',c:'noble',st:'gas'},
+Cs:{z:55,n:'Sesium',c:'alkali',st:'solid'}, Ba:{z:56,n:'Barium',c:'alkaline',st:'solid'},
+La:{z:57,n:'Lantanum',c:'lanthanide',st:'solid'}, Ce:{z:58,n:'Serium',c:'lanthanide',st:'solid'},
+Pr:{z:59,n:'Praseodimium',c:'lanthanide',st:'solid'}, Nd:{z:60,n:'Neodimium',c:'lanthanide',st:'solid'},
+Pm:{z:61,n:'Prometium',c:'lanthanide',st:'solid'}, Sm:{z:62,n:'Samarium',c:'lanthanide',st:'solid'},
+Eu:{z:63,n:'Europium',c:'lanthanide',st:'solid'}, Gd:{z:64,n:'Gadolinium',c:'lanthanide',st:'solid'},
+Tb:{z:65,n:'Terbium',c:'lanthanide',st:'solid'}, Dy:{z:66,n:'Disprosium',c:'lanthanide',st:'solid'},
+Ho:{z:67,n:'Holmium',c:'lanthanide',st:'solid'}, Er:{z:68,n:'Erbium',c:'lanthanide',st:'solid'},
+Tm:{z:69,n:'Tulium',c:'lanthanide',st:'solid'}, Yb:{z:70,n:'Iterbium',c:'lanthanide',st:'solid'},
+Lu:{z:71,n:'Lutesium',c:'lanthanide',st:'solid'}, Hf:{z:72,n:'Hafnium',c:'transition',st:'solid'},
+Ta:{z:73,n:'Tantalum',c:'transition',st:'solid'}, W:{z:74,n:'Wolfram',c:'transition',st:'solid'},
+Re:{z:75,n:'Renium',c:'transition',st:'solid'}, Os:{z:76,n:'Osmium',c:'transition',st:'solid'},
+Ir:{z:77,n:'Iridium',c:'transition',st:'solid'}, Pt:{z:78,n:'Platina',c:'transition',st:'solid'},
+Au:{z:79,n:'Emas',c:'transition',st:'solid'}, Hg:{z:80,n:'Raksa',c:'transition',st:'liquid'},
+Tl:{z:81,n:'Talium',c:'post',st:'solid'}, Pb:{z:82,n:'Timbal',c:'post',st:'solid'},
+Bi:{z:83,n:'Bismut',c:'post',st:'solid'}, Po:{z:84,n:'Polonium',c:'metalloid',st:'solid'},
+At:{z:85,n:'Astatin',c:'halogen',st:'solid'}, Rn:{z:86,n:'Radon',c:'noble',st:'gas'},
+Fr:{z:87,n:'Fransium',c:'alkali',st:'solid'}, Ra:{z:88,n:'Radium',c:'alkaline',st:'solid'},
+Ac:{z:89,n:'Aktinium',c:'actinide',st:'solid'}, Th:{z:90,n:'Torium',c:'actinide',st:'solid'},
+Pa:{z:91,n:'Protaktinium',c:'actinide',st:'solid'}, U:{z:92,n:'Uranium',c:'actinide',st:'solid'},
+Np:{z:93,n:'Neptunium',c:'actinide',st:'solid'}, Pu:{z:94,n:'Plutonium',c:'actinide',st:'solid'},
+Am:{z:95,n:'Amerisium',c:'actinide',st:'solid'}, Cm:{z:96,n:'Kurium',c:'actinide',st:'solid'},
+Bk:{z:97,n:'Berkelium',c:'actinide',st:'solid'}, Cf:{z:98,n:'Kalifornium',c:'actinide',st:'solid'},
+Es:{z:99,n:'Einsteinium',c:'actinide',st:'solid'}, Fm:{z:100,n:'Fermium',c:'actinide',st:'solid'},
+Md:{z:101,n:'Mendelevium',c:'actinide',st:'solid'}, No:{z:102,n:'Nobelium',c:'actinide',st:'solid'},
+Lr:{z:103,n:'Lawrensium',c:'actinide',st:'solid'}, Rf:{z:104,n:'Ruterfordium',c:'transition',st:'solid'},
+Db:{z:105,n:'Dubnium',c:'transition',st:'solid'}, Sg:{z:106,n:'Seaborgium',c:'transition',st:'solid'},
+Bh:{z:107,n:'Bohrium',c:'transition',st:'solid'}, Hs:{z:108,n:'Hasium',c:'transition',st:'solid'},
+Mt:{z:109,n:'Meitnerium',c:'transition',st:'solid'}, Ds:{z:110,n:'Darmstadtium',c:'transition',st:'solid'},
+Rg:{z:111,n:'Roentgenium',c:'transition',st:'solid'}, Cn:{z:112,n:'Kopernisium',c:'transition',st:'solid'},
+Nh:{z:113,n:'Nihonium',c:'post',st:'solid'}, Fl:{z:114,n:'Flerovium',c:'post',st:'solid'},
+Mc:{z:115,n:'Moskovium',c:'post',st:'solid'}, Lv:{z:116,n:'Livermorium',c:'post',st:'solid'},
+Ts:{z:117,n:'Tenesin',c:'halogen',st:'solid'}, Og:{z:118,n:'Oganeson',c:'noble',st:'solid'}
+};
+
+// layout (baris,kolom) per unsur
+const ROWS = {
+  1:{1:'H',18:'He'},
+  2:{1:'Li',2:'Be',13:'B',14:'C',15:'N',16:'O',17:'F',18:'Ne'},
+  3:{1:'Na',2:'Mg',13:'Al',14:'Si',15:'P',16:'S',17:'Cl',18:'Ar'},
+  4:{1:'K',2:'Ca',3:'Sc',4:'Ti',5:'V',6:'Cr',7:'Mn',8:'Fe',9:'Co',10:'Ni',11:'Cu',12:'Zn',13:'Ga',14:'Ge',15:'As',16:'Se',17:'Br',18:'Kr'},
+  5:{1:'Rb',2:'Sr',3:'Y',4:'Zr',5:'Nb',6:'Mo',7:'Tc',8:'Ru',9:'Rh',10:'Pd',11:'Ag',12:'Cd',13:'In',14:'Sn',15:'Sb',16:'Te',17:'I',18:'Xe'},
+  6:{1:'Cs',2:'Ba',4:'Hf',5:'Ta',6:'W',7:'Re',8:'Os',9:'Ir',10:'Pt',11:'Au',12:'Hg',13:'Tl',14:'Pb',15:'Bi',16:'Po',17:'At',18:'Rn'},
+  7:{1:'Fr',2:'Ra',4:'Rf',5:'Db',6:'Sg',7:'Bh',8:'Hs',9:'Mt',10:'Ds',11:'Rg',12:'Cn',13:'Nh',14:'Fl',15:'Mc',16:'Lv',17:'Ts',18:'Og'},
+  9:{3:'La',4:'Ce',5:'Pr',6:'Nd',7:'Pm',8:'Sm',9:'Eu',10:'Gd',11:'Tb',12:'Dy',13:'Ho',14:'Er',15:'Tm',16:'Yb',17:'Lu'},
+  10:{3:'Ac',4:'Th',5:'Pa',6:'U',7:'Np',8:'Pu',9:'Am',10:'Cm',11:'Bk',12:'Cf',13:'Es',14:'Fm',15:'Md',16:'No',17:'Lr'}
+};
+// periode "asli" untuk pewarnaan f-block
+const PERIOD_OF = sym => { const z=EL[sym].z; if(z>=57&&z<=71)return 6; if(z>=89&&z<=103)return 7; return null; };
+
+const pt = document.getElementById('pt');
+let scheme = 'cat';
+
+function colorFor(sym){
+  const e = EL[sym];
+  if (scheme==='cat') return CAT[e.c].col;
+  if (scheme==='state') return STATE[e.st].col;
+  // period
+  let per = PERIOD_OF(sym);
+  if (!per) for (const r in ROWS) if (Object.values(ROWS[r]).includes(sym) && r<=8) per=+r;
+  return PERIODCOL[(per||1)-1];
+}
+
+function build(){
+  pt.innerHTML='';
+  for (let row=1; row<=10; row++){
+    if (row===8){ continue; } // baris pemisah kecil dilewati via row 9/10 langsung
+    for (let col=1; col<=18; col++){
+      const sym = ROWS[row] && ROWS[row][col];
+      const cell = document.createElement('div');
+      // tempatkan di grid (baris 9,10 -> visual baris 8,9)
+      const visRow = row<=7 ? row : row-1;
+      cell.style.gridColumn = col; cell.style.gridRow = visRow;
+      if (sym){
+        cell.className='cell';
+        cell.style.background = colorFor(sym);
+        cell.innerHTML = `<span class="z">${EL[sym].z}</span><span class="s">${sym}</span>`;
+        cell.addEventListener('click', ()=> showDetail(sym, cell));
+      } else if ((row===6&&col===3)||(row===7&&col===3)){
+        cell.className='cell marker';
+        cell.style.gridRow = row; cell.style.gridColumn=3;
+        cell.textContent = row===6?'57–71':'89–103';
+      } else { continue; }
+      pt.appendChild(cell);
+    }
+  }
+}
+
+function showDetail(sym, cell){
+  const e = EL[sym];
+  document.getElementById('dZ').textContent = e.z;
+  document.getElementById('dS').textContent = sym;
+  document.getElementById('dN').textContent = e.n;
+  document.getElementById('dC').textContent = CAT[e.c].n;
+  document.getElementById('dC').style.color = CAT[e.c].col;
+  document.getElementById('dP').textContent = realPeriod(sym);
+  document.getElementById('dSt').textContent = STATE[e.st].n;
+}
+function realPeriod(sym){
+  const z=EL[sym].z;
+  if(z<=2)return 1; if(z<=10)return 2; if(z<=18)return 3; if(z<=36)return 4;
+  if(z<=54)return 5; if(z<=86)return 6; return 7;
+}
+
+function legend(){
+  const L = document.getElementById('legend'); L.innerHTML='';
+  let entries;
+  if (scheme==='cat') entries = Object.values(CAT).map(c=>[c.n,c.col]);
+  else if (scheme==='state') entries = Object.values(STATE).map(s=>[s.n,s.col]);
+  else entries = PERIODCOL.map((c,i)=>['Periode '+(i+1),c]);
+  entries.forEach(([n,c])=>{
+    const s=document.createElement('span'); s.textContent=n; s.style.background=c; L.appendChild(s);
+  });
+}
+
+document.querySelectorAll('[data-sch]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    scheme = b.dataset.sch;
+    document.querySelectorAll('[data-sch]').forEach(x=>x.classList.add('ghost'));
+    b.classList.remove('ghost');
+    build(); legend();
+  });
+});
+
+build(); legend();
+</script>
+</body>
+</html>

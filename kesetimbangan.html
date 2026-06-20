@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kesetimbangan Kimia (Le Chatelier) · HaloChem</title>
+<meta name="description" content="Simulasi kesetimbangan kimia dan asas Le Chatelier: geser suhu, tekanan, dan konsentrasi, amati pergeseran kesetimbangan.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Kesetimbangan Kimia — Asas Le Chatelier</h1>
+  <p class="sim-sub">Reaksi: A + B ⇌ 2C (eksoterm, Δn gas negatif). Beri gangguan, lihat sistem mencari kesetimbangan baru.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Diagram konsentrasi kesetimbangan"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Qc</div><div class="v" id="rQ">–</div></div>
+        <div class="item"><div class="k">Kc (suhu kini)</div><div class="v" id="rK" style="color:#fbbf24">–</div></div>
+        <div class="item"><div class="k">Status</div><div class="v" id="rStat" style="font-size:1rem">setimbang</div></div>
+      </div>
+
+      <div class="control">
+        <label for="temp">Suhu <span id="tempLbl">300 K</span></label>
+        <input type="range" id="temp" min="200" max="500" step="10" value="300">
+      </div>
+      <div class="control">
+        <label for="vol">Volume wadah (tekanan) <span id="volLbl">100%</span></label>
+        <input type="range" id="vol" min="50" max="150" step="5" value="100">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="addA">+ Tambah A</button>
+        <button class="btn" id="addC">+ Tambah C</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+
+      <h2>Asas Le Chatelier</h2>
+      <p>Jika sistem setimbang diberi gangguan, ia bergeser untuk melawan gangguan itu.</p>
+
+      <h2>Coba ini</h2>
+      <ul>
+        <li><b>Tambah A</b> → kesetimbangan bergeser ke kanan (membentuk lebih banyak C).</li>
+        <li><b>Naikkan suhu</b> → karena reaksi eksoterm, Kc turun, bergeser ke kiri.</li>
+        <li><b>Perkecil volume</b> (tekanan naik) → bergeser ke sisi dengan jumlah molekul gas lebih sedikit (kanan, 2 mol C &lt; 2 mol A+B... amati!).</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · model disederhanakan untuk pembelajaran</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+// Reaksi A + B <=> 2C
+let A, B, C;
+let temp = 300, volPct = 100;
+
+// K bergantung suhu (eksoterm: K turun saat suhu naik), van't Hoff sederhana
+function Kc() { return 8 * Math.exp(-(temp - 300) / 90); }
+
+function reset() {
+  A = 1.0; B = 1.0; C = 0.0;
+  temp = 300; volPct = 100;
+  document.getElementById('temp').value = 300;
+  document.getElementById('vol').value = 100;
+  document.getElementById('tempLbl').textContent = '300 K';
+  document.getElementById('volLbl').textContent = '100%';
+}
+
+function scaleForVolume(oldPct, newPct) {
+  // konsentrasi = mol/volume; perkecil volume -> konsentrasi naik
+  const f = oldPct / newPct;
+  A *= f; B *= f; C *= f;
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function step() {
+  const { w, h } = setupDPR();
+  const kf = 1.2, kr = kf / Kc();
+  // laju reaksi -> integrasi menuju kesetimbangan
+  const rate = kf * A * B - kr * C * C;
+  const dt = 0.02;
+  A -= rate * dt; B -= rate * dt; C += 2 * rate * dt;
+  A = Math.max(0, A); B = Math.max(0, B); C = Math.max(0, C);
+
+  const Q = (A*B) > 1e-9 ? (C*C) / (A*B) : Infinity;
+  const K = Kc();
+
+  // ---- gambar batang ----
+  ctx.clearRect(0,0,w,h);
+  const labels = ['A','B','C'];
+  const vals = [A,B,C];
+  const colors = ['#f87171','#38bdf8','#34d399'];
+  const maxV = Math.max(2.2, A, B, C);
+  const baseY = h - 50, top = 30;
+  const bw = w/3 * 0.42, gap = w/3;
+  for (let i=0;i<3;i++){
+    const x = gap*i + gap/2;
+    const bh = (vals[i]/maxV) * (baseY - top);
+    ctx.fillStyle = colors[i];
+    ctx.fillRect(x - bw/2, baseY - bh, bw, bh);
+    ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 16px system-ui'; ctx.textAlign='center';
+    ctx.fillText(labels[i], x, baseY + 22);
+    ctx.font = '13px system-ui'; ctx.fillStyle = '#9fb0c0';
+    ctx.fillText(vals[i].toFixed(2) + ' M', x, baseY - bh - 8);
+  }
+  ctx.strokeStyle = '#2e3a48'; ctx.beginPath();
+  ctx.moveTo(0, baseY); ctx.lineTo(w, baseY); ctx.stroke();
+  ctx.textAlign = 'start';
+  ctx.fillStyle = '#9fb0c0'; ctx.font = '13px system-ui';
+  ctx.fillText('A + B ⇌ 2C', 16, 22);
+
+  // readout
+  document.getElementById('rQ').textContent = isFinite(Q) ? Q.toFixed(2) : '∞';
+  document.getElementById('rK').textContent = K.toFixed(2);
+  const el = document.getElementById('rStat');
+  if (Math.abs(rate) < 0.004) { el.textContent = 'setimbang'; el.style.color = '#34d399'; }
+  else if (rate > 0) { el.textContent = '→ ke kanan'; el.style.color = '#38bdf8'; }
+  else { el.textContent = '← ke kiri'; el.style.color = '#f87171'; }
+
+  requestAnimationFrame(step);
+}
+
+document.getElementById('temp').addEventListener('input', e=>{
+  temp = +e.target.value; document.getElementById('tempLbl').textContent = temp+' K';
+});
+document.getElementById('vol').addEventListener('input', e=>{
+  const nv = +e.target.value; scaleForVolume(volPct, nv); volPct = nv;
+  document.getElementById('volLbl').textContent = volPct+'%';
+});
+document.getElementById('addA').addEventListener('click', ()=>{ A += 0.6; });
+document.getElementById('addC').addEventListener('click', ()=>{ C += 0.6; });
+document.getElementById('reset').addEventListener('click', reset);
+
+reset();
+requestAnimationFrame(step);
+</script>
+</body>
+</html>

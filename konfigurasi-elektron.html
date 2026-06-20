@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Konfigurasi Elektron · HaloChem</title>
+<meta name="description" content="Simulasi pengisian orbital (Aufbau, Hund, Pauli) untuk unsur Z=1 sampai 36.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔡</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="logo">⚗️</div>
+    <div class="brand">HaloChem<small>Simulasi kimia interaktif</small></div>
+    <nav><a href="index.html">Beranda</a></nav>
+  </div>
+</header>
+
+<main class="wrap sim-main">
+  <a class="back" href="index.html">← Kembali ke daftar simulasi</a>
+  <h1 class="sim-title">Konfigurasi Elektron</h1>
+  <p class="sim-sub">Pengisian orbital mengikuti asas Aufbau, kaidah Hund, dan larangan Pauli. Untuk Z = 1–36.</p>
+
+  <div class="sim-layout">
+    <div class="stage">
+      <canvas id="cv" width="660" height="440" aria-label="Diagram orbital"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="readout">
+        <div class="item"><div class="k">Nomor atom</div><div class="v" id="rZ">1</div></div>
+        <div class="item" style="min-width:140px"><div class="k">Unsur</div><div class="v" id="rName" style="font-size:1rem">Hidrogen</div></div>
+      </div>
+
+      <div class="control">
+        <label for="z">Geser nomor atom (Z) <span id="zLab">1 — H</span></label>
+        <input type="range" id="z" min="1" max="36" step="1" value="1">
+      </div>
+
+      <h2>Konfigurasi elektron</h2>
+      <p id="config" style="font-family:monospace;font-size:1rem;color:#e6edf3"></p>
+      <p id="shorthand" style="font-family:monospace;font-size:0.95rem;color:#9fb0c0"></p>
+      <p id="noteEx" style="color:#fbbf24;font-size:0.85rem"></p>
+
+      <h2>Aturan</h2>
+      <ul>
+        <li><b>Aufbau:</b> orbital energi terendah diisi lebih dulu (1s→2s→2p→3s→3p→4s→3d→4p).</li>
+        <li><b>Hund:</b> orbital setingkat diisi sendiri-sendiri dulu sebelum berpasangan.</li>
+        <li><b>Pauli:</b> satu orbital maksimal 2 elektron dengan spin berlawanan.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">HaloChem · termasuk pengecualian Cr & Cu</div></footer>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const ELEM = ['','Hidrogen','Helium','Litium','Berilium','Boron','Karbon','Nitrogen','Oksigen','Fluorin','Neon',
+'Natrium','Magnesium','Aluminium','Silikon','Fosforus','Belerang','Klorin','Argon','Kalium','Kalsium',
+'Skandium','Titanium','Vanadium','Kromium','Mangan','Besi','Kobalt','Nikel','Tembaga','Seng',
+'Galium','Germanium','Arsen','Selenium','Bromin','Kripton'];
+const SYM = ['','H','He','Li','Be','B','C','N','O','F','Ne','Na','Mg','Al','Si','P','S','Cl','Ar','K','Ca',
+'Sc','Ti','V','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge','As','Se','Br','Kr'];
+const ORDER = [['1s',2],['2s',2],['2p',6],['3s',2],['3p',6],['4s',2],['3d',10],['4p',6]];
+const NOBLE = {2:'[He]',10:'[Ne]',18:'[Ar]'};
+
+let Z = 1;
+
+function fillConfig(z){
+  const occ = {};
+  let rem = z;
+  for (const [name,cap] of ORDER){ const e=Math.min(cap,rem); occ[name]=e; rem-=e; if(rem<=0)break; }
+  let note = '';
+  // pengecualian: Cr (24) & Cu (29) -> pindah 1 elektron 4s ke 3d
+  if (z===24){ occ['4s']=1; occ['3d']=5; note='Pengecualian: 3d setengah penuh (3d⁵) lebih stabil → 4s¹ 3d⁵.'; }
+  if (z===29){ occ['4s']=1; occ['3d']=10; note='Pengecualian: 3d penuh (3d¹⁰) lebih stabil → 4s¹ 3d¹⁰.'; }
+  return { occ, note };
+}
+
+const SUP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'};
+function sup(n){ return (''+n).split('').map(d=>SUP[d]).join(''); }
+
+function configString(occ){
+  return ORDER.filter(([n])=>occ[n]>0).map(([n])=>n+sup(occ[n])).join(' ');
+}
+function shorthand(occ, z){
+  // cari gas mulia terakhir < z
+  let core=0, label='';
+  for (const k of [18,10,2]) if (z>k){ core=k; label=NOBLE[k]; break; }
+  if (!core) return '';
+  const coreFill = fillConfig(core).occ;
+  const rest = ORDER.map(([n])=>{
+    const diff = (occ[n]||0) - (coreFill[n]||0);
+    return diff>0 ? n+sup(diff) : null;
+  }).filter(Boolean).join(' ');
+  return label + ' ' + rest;
+}
+
+function setupDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientWidth * 440 / 660;
+  cv.width = w*dpr; cv.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w, h };
+}
+
+function draw(){
+  const { w, h } = setupDPR();
+  ctx.clearRect(0,0,w,h);
+  const { occ } = fillConfig(Z);
+  const subs = ORDER.filter(([n])=>occ[n]>0);
+  const rowH = Math.min(46, (h-20)/subs.length);
+  const box = Math.min(26, rowH-14);
+  let y = 14;
+  for (const [name,cap] of subs){
+    const boxes = cap/2;
+    let e = occ[name];
+    ctx.fillStyle = '#9fb0c0'; ctx.font='bold 14px system-ui'; ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(name, 6, y+box/2);
+    const x0 = 44;
+    // distribusi Hund
+    const up = new Array(boxes).fill(0), dn = new Array(boxes).fill(0);
+    let left = e;
+    for (let i=0;i<boxes && left>0;i++){ up[i]=1; left--; }
+    for (let i=0;i<boxes && left>0;i++){ dn[i]=1; left--; }
+    for (let i=0;i<boxes;i++){
+      const x = x0 + i*(box+6);
+      ctx.strokeStyle = '#475569'; ctx.lineWidth=1.5;
+      ctx.strokeRect(x, y, box, box);
+      ctx.fillStyle = '#38bdf8'; ctx.font=`bold ${box-6}px system-ui`; ctx.textAlign='center';
+      if (up[i]) ctx.fillText('↑', x+box*0.32, y+box*0.52);
+      if (dn[i]) ctx.fillText('↓', x+box*0.68, y+box*0.52);
+    }
+    // label jumlah elektron
+    ctx.fillStyle = '#9fb0c0'; ctx.font='12px system-ui'; ctx.textAlign='left';
+    ctx.fillText(name+sup(e), x0 + boxes*(box+6) + 8, y+box/2);
+    y += rowH;
+  }
+  ctx.textBaseline='alphabetic'; ctx.textAlign='left';
+  requestAnimationFrame(draw);
+}
+
+function update(){
+  const { occ, note } = fillConfig(Z);
+  document.getElementById('rZ').textContent = Z;
+  document.getElementById('rName').textContent = ELEM[Z];
+  document.getElementById('zLab').textContent = Z + ' — ' + SYM[Z];
+  document.getElementById('config').textContent = configString(occ);
+  const sh = shorthand(occ, Z);
+  document.getElementById('shorthand').textContent = sh ? ('Singkat: ' + sh) : '';
+  document.getElementById('noteEx').textContent = note;
+}
+
+document.getElementById('z').addEventListener('input', e=>{ Z=+e.target.value; update(); });
+update();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
